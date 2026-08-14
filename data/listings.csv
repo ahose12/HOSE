@@ -1,0 +1,2 @@
+source,source_listing_id,listing_url,address,city,county,lat,lon,acres,price,photo_date,photo_urls
+Example Feed,EXAMPLE-1,https://example.com/listing,Example Property,Scottsboro AL,Jackson,34.67,-86.03,5,125000,,https://example.com/photo1.jpg|https://example.com/photo2.jpg
