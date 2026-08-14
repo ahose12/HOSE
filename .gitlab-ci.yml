@@ -1,0 +1,26 @@
+stages: [scan,pages]
+scan_deer_intelligence:
+  stage: scan
+  image: python:3.11
+  before_script:
+    - pip install --upgrade pip
+    - pip install -r requirements.txt
+  script:
+    - python backend/scanner.py
+    - sh backend/persist_gitlab.sh
+  artifacts:
+    paths: [public/observations.json, public/deer_profiles.json, data/deer_intelligence.sqlite]
+    expire_in: 30 days
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+pages:
+  stage: pages
+  image: alpine:latest
+  dependencies: [scan_deer_intelligence]
+  script: ["test -f public/index.html"]
+  artifacts:
+    paths: [public]
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
