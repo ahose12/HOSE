@@ -1,1 +1,38 @@
-[]
+[
+  {
+    "deer_id": "AL-JACKSON-BUCK-0001",
+    "nickname": null,
+    "sex": "buck",
+    "area_label": "Jackson",
+    "first_seen": "2026-08-15T03:10:48.269708+00:00",
+    "last_seen": "2026-08-15T03:12:23.671296+00:00",
+    "sighting_count": 2,
+    "identity_confidence": 0.9200809700057605,
+    "antler_signature": null,
+    "phenotype_notes": null,
+    "lineage_notes": null,
+    "genetics_evidence_type": null,
+    "harvest_status": null,
+    "harvest_date": null,
+    "harvest_evidence_note": null,
+    "harvest_verified_by": null
+  },
+  {
+    "deer_id": "AL-JACKSON-BUCK-0002",
+    "nickname": null,
+    "sex": "buck",
+    "area_label": "Jackson",
+    "first_seen": "2026-08-15T03:11:35.955564+00:00",
+    "last_seen": "2026-08-15T03:11:35.955564+00:00",
+    "sighting_count": 1,
+    "identity_confidence": 1.0,
+    "antler_signature": null,
+    "phenotype_notes": null,
+    "lineage_notes": null,
+    "genetics_evidence_type": null,
+    "harvest_status": null,
+    "harvest_date": null,
+    "harvest_evidence_note": null,
+    "harvest_verified_by": null
+  }
+]
