@@ -1,4 +1,7 @@
-const $ = id => document.getElementById(id);
+from pathlib import Path
+import subprocess, textwrap
+
+app_js = r'''const $ = id => document.getElementById(id);
 const rad = d => d * Math.PI / 180;
 
 let cfg = {};
@@ -24,279 +27,146 @@ let deerProfiles = [];
    ============================================================ */
 
 function initSupabase() {
-
-  const config =
-    window.HOSE_SUPABASE
-    ||
-    {};
-
+  const config = window.HOSE_SUPABASE || {};
 
   if (
-    !config.url
-    ||
-    !config.publishableKey
-    ||
-    config.url.includes("PASTE_")
-    ||
+    !config.url ||
+    !config.publishableKey ||
+    config.url.includes("PASTE_") ||
     config.publishableKey.includes("PASTE_")
   ) {
-
-    $("authMessage")
-      .textContent =
-        "Supabase is not configured. Update public/supabase-config.js.";
-
+    $("authMessage").textContent =
+      "Supabase is not configured. Update public/supabase-config.js.";
     return false;
   }
 
-
-  sb =
-    window.supabase
-      .createClient(
-        config.url,
-        config.publishableKey,
-        {
-          auth: {
-            persistSession: true,
-            autoRefreshToken: true,
-            detectSessionInUrl: true
-          }
-        }
-      );
-
+  sb = window.supabase.createClient(
+    config.url,
+    config.publishableKey,
+    {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    }
+  );
 
   return true;
 }
 
 
 async function restoreSession() {
-
-  const {
-    data,
-    error
-  } =
-    await sb.auth
-      .getSession();
-
+  const { data, error } = await sb.auth.getSession();
 
   if (error) {
-
-    $("authMessage")
-      .textContent =
-        error.message;
-
+    $("authMessage").textContent = error.message;
     return;
   }
 
+  await applySession(data.session);
 
-  await applySession(
-    data.session
+  sb.auth.onAuthStateChange(
+    async (_event, session) => {
+      await applySession(session);
+    }
   );
-
-
-  sb.auth
-    .onAuthStateChange(
-      async (
-        _event,
-        session
-      ) => {
-
-        await applySession(
-          session
-        );
-
-      }
-    );
 }
 
 
-async function applySession(
-  session
-) {
+async function applySession(session) {
+  currentUser = session?.user || null;
 
-  currentUser =
-    session?.user
-    ||
-    null;
+  $("authGate").classList.toggle(
+    "hidden",
+    !!currentUser
+  );
 
-
-  $("authGate")
-    .classList
-    .toggle(
-      "hidden",
-      !!currentUser
-    );
-
-
-  $("appShell")
-    .classList
-    .toggle(
-      "hidden",
-      !currentUser
-    );
-
+  $("appShell").classList.toggle(
+    "hidden",
+    !currentUser
+  );
 
   if (!currentUser) {
-
-    $("signedInEmail")
-      .textContent =
-        "";
-
+    $("signedInEmail").textContent = "";
     clearPrivateUi();
-
     return;
   }
 
-
-  $("signedInEmail")
-    .textContent =
-      currentUser.email
-      ||
-      currentUser.id;
-
+  $("signedInEmail").textContent =
+    currentUser.email || currentUser.id;
 
   await refreshPrivateData();
 
-
-  // Initialize the public area map only after login.
   if (!map) {
-
     initMapSafe();
-
   }
-
 }
 
 
 async function signIn() {
+  const email = $("authEmail").value.trim();
+  const password = $("authPassword").value;
 
-  const email =
-    $("authEmail")
-      .value
-      .trim();
-
-
-  const password =
-    $("authPassword")
-      .value;
-
-
-  if (
-    !email
-    ||
-    !password
-  ) {
-
-    $("authMessage")
-      .textContent =
-        "Enter email and password.";
-
+  if (!email || !password) {
+    $("authMessage").textContent =
+      "Enter email and password.";
     return;
   }
 
+  $("authMessage").textContent =
+    "Signing in…";
 
-  $("authMessage")
-    .textContent =
-      "Signing in…";
+  const { error } =
+    await sb.auth.signInWithPassword({
+      email,
+      password
+    });
 
-
-  const {
-    error
-  } =
-    await sb.auth
-      .signInWithPassword(
-        {
-          email,
-          password
-        }
-      );
-
-
-  $("authMessage")
-    .textContent =
-      error
-      ?
-      error.message
-      :
-      "Signed in.";
+  $("authMessage").textContent =
+    error ? error.message : "Signed in.";
 }
 
 
 async function signUp() {
+  const email = $("authEmail").value.trim();
+  const password = $("authPassword").value;
 
-  const email =
-    $("authEmail")
-      .value
-      .trim();
-
-
-  const password =
-    $("authPassword")
-      .value;
-
-
-  if (
-    !email
-    ||
-    !password
-  ) {
-
-    $("authMessage")
-      .textContent =
-        "Enter email and password.";
-
+  if (!email || !password) {
+    $("authMessage").textContent =
+      "Enter email and password.";
     return;
   }
 
+  $("authMessage").textContent =
+    "Creating account…";
 
-  $("authMessage")
-    .textContent =
-      "Creating account…";
-
-
-  const {
-    data,
-    error
-  } =
-    await sb.auth
-      .signUp(
-        {
-          email,
-          password,
-          options: {
-            emailRedirectTo:
-              window.location.origin
-              +
-              window.location.pathname
-          }
-        }
-      );
-
+  const { data, error } =
+    await sb.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo:
+          window.location.origin +
+          window.location.pathname
+      }
+    });
 
   if (error) {
-
-    $("authMessage")
-      .textContent =
-        error.message;
-
+    $("authMessage").textContent =
+      error.message;
     return;
   }
 
-
-  $("authMessage")
-    .textContent =
-      data.session
-      ?
-      "Account created and signed in."
-      :
-      "Account created. Check your email to confirm your address, then sign in.";
+  $("authMessage").textContent =
+    data.session
+      ? "Account created and signed in."
+      : "Account created. Check your email to confirm your address, then sign in.";
 }
 
 
 async function signOut() {
-
-  await sb.auth
-    .signOut();
-
+  await sb.auth.signOut();
 }
 
 
@@ -305,82 +175,45 @@ async function signOut() {
    ============================================================ */
 
 function setupTabs() {
-
   document
-    .querySelectorAll(
-      ".app-tab"
-    )
-    .forEach(
-      button => {
+    .querySelectorAll(".app-tab")
+    .forEach(button => {
+      button.addEventListener(
+        "click",
+        () => {
+          document
+            .querySelectorAll(".app-tab")
+            .forEach(tab =>
+              tab.classList.remove("active")
+            );
 
-        button.addEventListener(
-          "click",
-          () => {
+          button.classList.add("active");
 
-            document
-              .querySelectorAll(
-                ".app-tab"
-              )
-              .forEach(
-                tab =>
-                  tab.classList
-                    .remove(
-                      "active"
-                    )
-              );
+          const selected =
+            button.dataset.tab;
 
+          $("tab-my-intel").classList.toggle(
+            "hidden",
+            selected !== "my-intel"
+          );
 
-            button.classList
-              .add(
-                "active"
-              );
+          $("tab-area-intel").classList.toggle(
+            "hidden",
+            selected !== "area-intel"
+          );
 
-
-            const selected =
-              button.dataset.tab;
-
-
-            $("tab-my-intel")
-              .classList
-              .toggle(
-                "hidden",
-                selected
-                !==
-                "my-intel"
-              );
-
-
-            $("tab-area-intel")
-              .classList
-              .toggle(
-                "hidden",
-                selected
-                !==
-                "area-intel"
-              );
-
-
-            if (
-              selected
-              ===
-              "area-intel"
-              &&
-              map
-            ) {
-
-              setTimeout(
-                () =>
-                  map.invalidateSize(),
-                100
-              );
-
-            }
-
+          if (
+            selected === "area-intel" &&
+            map
+          ) {
+            setTimeout(
+              () => map.invalidateSize(),
+              100
+            );
           }
-        );
-
-      }
-    );
+        }
+      );
+    });
 }
 
 
@@ -389,314 +222,166 @@ function setupTabs() {
    ============================================================ */
 
 async function refreshPrivateData() {
-
-  await Promise.all(
-    [
-      loadProperties(),
-      loadCameras(),
-      loadDeerProfiles()
-    ]
-  );
-
+  await Promise.all([
+    loadProperties(),
+    loadCameras(),
+    loadDeerProfiles()
+  ]);
 
   renderPrivate();
-
-
   await loadRecentPhotos();
 }
 
 
 async function loadProperties() {
-
-  const {
-    data,
-    error
-  } =
+  const { data, error } =
     await sb
-      .from(
-        "properties"
-      )
+      .from("properties")
       .select("*")
-      .order(
-        "created_at",
-        {
-          ascending: true
-        }
-      );
-
+      .order("created_at", {
+        ascending: true
+      });
 
   if (error) {
-
-    $("propertyMessage")
-      .textContent =
-        error.message;
-
+    $("propertyMessage").textContent =
+      error.message;
     return;
   }
 
-
-  properties =
-    data
-    ||
-    [];
+  properties = data || [];
 }
 
 
 async function loadCameras() {
-
-  const {
-    data,
-    error
-  } =
+  const { data, error } =
     await sb
-      .from(
-        "cameras"
-      )
+      .from("cameras")
       .select(
         "*, camera_features(feature_type)"
       )
-      .eq(
-        "active",
-        true
-      )
-      .order(
-        "created_at",
-        {
-          ascending: true
-        }
-      );
-
+      .eq("active", true)
+      .order("created_at", {
+        ascending: true
+      });
 
   if (error) {
-
-    $("cameraMessage")
-      .textContent =
-        error.message;
-
+    $("cameraMessage").textContent =
+      error.message;
     return;
   }
 
-
-  cameras =
-    data
-    ||
-    [];
+  cameras = data || [];
 }
 
 
 async function loadDeerProfiles() {
-
-  const {
-    data,
-    error
-  } =
+  const { data, error } =
     await sb
-      .from(
-        "deer_profiles"
-      )
+      .from("deer_profiles")
       .select("*")
-      .order(
-        "last_seen",
-        {
-          ascending: false
-        }
-      );
-
+      .order("last_seen", {
+        ascending: false
+      });
 
   if (error) {
-
-    console.error(
-      error
-    );
-
-    deerProfiles =
-      [];
-
+    console.error(error);
+    deerProfiles = [];
     return;
   }
 
-
-  deerProfiles =
-    data
-    ||
-    [];
+  deerProfiles = data || [];
 }
 
 
 async function addProperty() {
-
   const name =
-    $("propertyName")
-      .value
-      .trim();
-
+    $("propertyName").value.trim();
 
   if (!name) {
-
-    $("propertyMessage")
-      .textContent =
-        "Property name is required.";
-
+    $("propertyMessage").textContent =
+      "Property name is required.";
     return;
   }
 
-
-  const {
-    error
-  } =
+  const { error } =
     await sb
-      .from(
-        "properties"
-      )
-      .insert(
-        {
-          user_id:
-            currentUser.id,
-
-          name,
-
-          county:
-            $("propertyCounty")
-              .value
-              .trim()
-            ||
-            null,
-
-          state:
-            $("propertyState")
-              .value
-              .trim()
-            ||
-            "AL",
-
-          acreage:
-            $("propertyAcres")
-              .value
-            ?
-            Number(
-              $("propertyAcres")
-                .value
-            )
-            :
-            null
-        }
-      );
-
+      .from("properties")
+      .insert({
+        user_id: currentUser.id,
+        name,
+        county:
+          $("propertyCounty").value.trim()
+          || null,
+        state:
+          $("propertyState").value.trim()
+          || "AL",
+        acreage:
+          $("propertyAcres").value
+            ? Number(
+                $("propertyAcres").value
+              )
+            : null
+      });
 
   if (error) {
-
-    $("propertyMessage")
-      .textContent =
-        error.message;
-
+    $("propertyMessage").textContent =
+      error.message;
     return;
   }
 
+  $("propertyMessage").textContent =
+    "Property added.";
 
-  $("propertyMessage")
-    .textContent =
-      "Property added.";
-
-
-  $("propertyName")
-    .value =
-      "";
-
-
-  $("propertyAcres")
-    .value =
-      "";
-
-
-  $("propertyCounty")
-    .value =
-      "";
-
+  $("propertyName").value = "";
+  $("propertyAcres").value = "";
+  $("propertyCounty").value = "";
 
   await refreshPrivateData();
 }
 
 
 async function addCamera() {
-
   const propertyId =
-    $("propertySelect")
-      .value;
-
+    $("propertySelect").value;
 
   const name =
-    $("cameraName")
-      .value
-      .trim();
-
+    $("cameraName").value.trim();
 
   if (!propertyId) {
-
-    $("cameraMessage")
-      .textContent =
-        "Choose a property first.";
-
+    $("cameraMessage").textContent =
+      "Choose a property first.";
     return;
   }
-
 
   if (!name) {
-
-    $("cameraMessage")
-      .textContent =
-        "Camera name is required.";
-
+    $("cameraMessage").textContent =
+      "Camera name is required.";
     return;
   }
 
-
-  const {
-    data,
-    error
-  } =
+  const { data, error } =
     await sb
-      .from(
-        "cameras"
-      )
-      .insert(
-        {
-          user_id:
-            currentUser.id,
-
-          property_id:
-            propertyId,
-
-          name,
-
-          facing:
-            $("cameraFacing")
-              .value,
-
-          primary_habitat:
-            $("primaryHabitat")
-              .value,
-
-          notes:
-            $("cameraNotes")
-              .value
-              .trim()
-            ||
-            null
-        }
-      )
+      .from("cameras")
+      .insert({
+        user_id: currentUser.id,
+        property_id: propertyId,
+        name,
+        facing:
+          $("cameraFacing").value,
+        primary_habitat:
+          $("primaryHabitat").value,
+        notes:
+          $("cameraNotes").value.trim()
+          || null
+      })
       .select()
       .single();
 
-
   if (error) {
-
-    $("cameraMessage")
-      .textContent =
-        error.message;
-
+    $("cameraMessage").textContent =
+      error.message;
     return;
   }
-
 
   const features =
     Array.from(
@@ -704,67 +389,43 @@ async function addCamera() {
         ".habitat-options input:checked"
       )
     )
-    .map(
-      checkbox =>
-        checkbox.value
+    .map(checkbox =>
+      checkbox.value
     );
 
-
-  if (
-    features.length
-  ) {
-
+  if (features.length) {
     const featureRows =
-      features.map(
-        feature => ({
-          user_id:
-            currentUser.id,
+      features.map(feature => ({
+        user_id: currentUser.id,
+        camera_id: data.id,
+        feature_type: feature
+      }));
 
-          camera_id:
-            data.id,
+    const { error: featureError } =
+      await sb
+        .from("camera_features")
+        .insert(featureRows);
 
-          feature_type:
-            feature
-        })
-      );
-
-
-    await sb
-      .from(
-        "camera_features"
-      )
-      .insert(
-        featureRows
-      );
-
+    if (featureError) {
+      $("cameraMessage").textContent =
+        "Camera saved, but features failed: "
+        + featureError.message;
+    }
   }
 
+  $("cameraMessage").textContent =
+    "Camera added.";
 
-  $("cameraMessage")
-    .textContent =
-      "Camera added.";
-
-
-  $("cameraName")
-    .value =
-      "";
-
-
-  $("cameraNotes")
-    .value =
-      "";
-
+  $("cameraName").value = "";
+  $("cameraNotes").value = "";
 
   document
     .querySelectorAll(
       ".habitat-options input"
     )
-    .forEach(
-      checkbox =>
-        checkbox.checked =
-          false
+    .forEach(checkbox =>
+      checkbox.checked = false
     );
-
 
   await refreshPrivateData();
 }
@@ -774,61 +435,61 @@ async function renameDeer(
   deerId,
   currentName
 ) {
-
   const nickname =
     prompt(
       "Deer nickname:",
-      currentName
-      ||
-      ""
+      currentName || ""
     );
 
-
-  if (
-    nickname
-    ===
-    null
-  ) {
-
+  if (nickname === null) {
     return;
   }
 
-
-  const {
-    error
-  } =
+  const { error } =
     await sb
-      .from(
-        "deer_profiles"
-      )
-      .update(
-        {
-          nickname:
-            nickname.trim()
-            ||
-            null
-        }
-      )
-      .eq(
-        "id",
-        deerId
-      );
-
+      .from("deer_profiles")
+      .update({
+        nickname:
+          nickname.trim() || null
+      })
+      .eq("id", deerId);
 
   if (error) {
-
-    alert(
-      error.message
-    );
-
+    alert(error.message);
     return;
   }
 
-
   await loadDeerProfiles();
-
-
   renderDeerProfiles();
+}
+
+
+/* ============================================================
+   AI PROCESSING
+   ============================================================ */
+
+async function processPhotoWithAI(photoId) {
+  const { data, error } =
+    await sb.functions.invoke(
+      "process-deer-photo",
+      {
+        body: {
+          photo_id: photoId
+        }
+      }
+    );
+
+  if (error) {
+    throw error;
+  }
+
+  if (data?.ok === false) {
+    throw new Error(
+      data.error || "AI processing failed."
+    );
+  }
+
+  return data;
 }
 
 
@@ -836,10 +497,7 @@ async function renameDeer(
    PHOTO UPLOAD
    ============================================================ */
 
-function safeFileName(
-  name
-) {
-
+function safeFileName(name) {
   return name
     .replace(
       /[^a-zA-Z0-9._-]+/g,
@@ -849,75 +507,39 @@ function safeFileName(
       /_+/g,
       "_"
     )
-    .slice(
-      -120
-    );
+    .slice(-120);
 }
 
 
-function renderSelectedPreviews(
-  files
-) {
-
+function renderSelectedPreviews(files) {
   const section =
     $("photoPreviewSection");
-
 
   const grid =
     $("photoPreviewGrid");
 
+  grid.innerHTML = "";
 
-  grid.innerHTML =
-    "";
-
-
-  if (
-    !files.length
-  ) {
-
-    section.classList
-      .add(
-        "hidden"
-      );
-
+  if (!files.length) {
+    section.classList.add("hidden");
     return;
   }
 
+  section.classList.remove("hidden");
 
-  section.classList
-    .remove(
-      "hidden"
-    );
-
-
-  Array.from(
-    files
-  )
-  .slice(
-    0,
-    100
-  )
-  .forEach(
-    file => {
-
+  Array.from(files)
+    .slice(0, 100)
+    .forEach(file => {
       const url =
-        URL.createObjectURL(
-          file
-        );
-
+        URL.createObjectURL(file);
 
       const card =
-        document.createElement(
-          "div"
-        );
-
+        document.createElement("div");
 
       card.className =
         "photo-item";
 
-
-      card.innerHTML =
-        `
+      card.innerHTML = `
         <img
           src="${url}"
           alt=""
@@ -926,149 +548,96 @@ function renderSelectedPreviews(
         <div class="photo-name">
           ${file.name}
         </div>
-        `;
+      `;
 
-
-      grid.appendChild(
-        card
-      );
-
-    }
-  );
+      grid.appendChild(card);
+    });
 }
 
 
 async function uploadPhotos() {
-
   const propertyId =
-    $("uploadProperty")
-      .value;
-
+    $("uploadProperty").value;
 
   const cameraId =
-    $("uploadCamera")
-      .value;
-
+    $("uploadCamera").value;
 
   const files =
     Array.from(
-      $("photoUpload")
-        .files
+      $("photoUpload").files
     );
 
-
-  if (
-    !propertyId
-    ||
-    !cameraId
-  ) {
-
-    $("uploadProgress")
-      .textContent =
-        "Choose both a property and camera.";
-
+  if (!propertyId || !cameraId) {
+    $("uploadProgress").textContent =
+      "Choose both a property and camera.";
     return;
   }
 
-
-  if (
-    !files.length
-  ) {
-
-    $("uploadProgress")
-      .textContent =
-        "Select photos first.";
-
+  if (!files.length) {
+    $("uploadProgress").textContent =
+      "Select photos first.";
     return;
   }
 
+  $("processUploadBtn").disabled = true;
 
-  $("processUploadBtn")
-    .disabled =
-      true;
-
-
-  let success =
-    0;
-
-
-  let failed =
-    0;
-
+  let uploaded = 0;
+  let analyzed = 0;
+  let failed = 0;
 
   for (
     let i = 0;
     i < files.length;
     i++
   ) {
+    const file = files[i];
 
-    const file =
-      files[i];
-
-
-    $("uploadProgress")
-      .textContent =
+    try {
+      $("uploadProgress").textContent =
         `Uploading ${i + 1} of ${files.length}: ${file.name}`;
 
+      const fileId =
+        crypto.randomUUID();
 
-    const fileId =
-      crypto.randomUUID();
+      const path =
+        `${currentUser.id}/${propertyId}/${cameraId}/${fileId}-${safeFileName(file.name)}`;
 
+      const {
+        error: uploadError
+      } =
+        await sb.storage
+          .from(
+            "trail-camera-photos"
+          )
+          .upload(
+            path,
+            file,
+            {
+              contentType:
+                file.type
+                || "image/jpeg",
 
-    const path =
-      `${currentUser.id}/${propertyId}/${cameraId}/${fileId}-${safeFileName(file.name)}`;
+              cacheControl:
+                "3600",
 
+              upsert:
+                false
+            }
+          );
 
-    const {
-      error:
-        uploadError
-    } =
-      await sb.storage
-        .from(
-          "trail-camera-photos"
-        )
-        .upload(
-          path,
-          file,
-          {
-            contentType:
-              file.type
-              ||
-              "image/jpeg",
+      if (uploadError) {
+        throw uploadError;
+      }
 
-            cacheControl:
-              "3600",
+      uploaded++;
 
-            upsert:
-              false
-          }
-        );
-
-
-    if (
-      uploadError
-    ) {
-
-      console.error(
-        uploadError
-      );
-
-      failed++;
-
-      continue;
-    }
-
-
-    const {
-      error:
-        rowError
-    } =
-      await sb
-        .from(
-          "trail_photos"
-        )
-        .insert(
-          {
+      const {
+        data: photoRow,
+        error: rowError
+      } =
+        await sb
+          .from("trail_photos")
+          .insert({
             user_id:
               currentUser.id,
 
@@ -1086,106 +655,126 @@ async function uploadPhotos() {
 
             captured_at:
               file.lastModified
-              ?
-              new Date(
-                file.lastModified
-              ).toISOString()
-              :
-              null,
+                ? new Date(
+                    file.lastModified
+                  ).toISOString()
+                : null,
 
             processing_status:
               "queued"
-          }
+          })
+          .select()
+          .single();
+
+      if (rowError) {
+        await sb.storage
+          .from(
+            "trail-camera-photos"
+          )
+          .remove([path]);
+
+        throw rowError;
+      }
+
+      $("uploadProgress").textContent =
+        `Analyzing ${i + 1} of ${files.length}: ${file.name}`;
+
+      const aiResult =
+        await processPhotoWithAI(
+          photoRow.id
         );
 
+      console.log(
+        "HOSE AI RESULT",
+        aiResult
+      );
 
-    if (
-      rowError
-    ) {
+      analyzed++;
 
-      await sb.storage
-        .from(
-          "trail-camera-photos"
-        )
-        .remove(
-          [
-            path
-          ]
-        );
+      if (
+        aiResult?.analysis?.deer_present
+      ) {
+        const a =
+          aiResult.analysis;
 
+        $("uploadProgress").textContent =
+          `Analyzed ${file.name}: `
+          +
+          `${a.deer_count} deer, `
+          +
+          `${a.buck_count} bucks, `
+          +
+          `${a.doe_count} does, `
+          +
+          `${a.fawn_count} fawns.`;
+      } else {
+        $("uploadProgress").textContent =
+          `Analyzed ${file.name}: no deer detected.`;
+      }
+
+    } catch (error) {
+      console.error(
+        "Upload / analysis failed:",
+        error
+      );
 
       failed++;
 
-      continue;
+      $("uploadProgress").textContent =
+        `Problem with ${file.name}: `
+        +
+        (
+          error?.message
+          ||
+          String(error)
+        );
     }
-
-
-    success++;
-
   }
 
+  $("processUploadBtn").disabled =
+    false;
 
-  $("uploadProgress")
-    .textContent =
-      `Done. ${success} uploaded`
-      +
-      (
-        failed
-        ?
-        `, ${failed} failed`
-        :
-        ""
-      )
-      +
-      ". Photos are queued for AI processing.";
+  $("photoUpload").value =
+    "";
 
+  $("uploadCount").textContent =
+    "0 files selected";
 
-  $("processUploadBtn")
-    .disabled =
-      false;
-
-
-  $("photoUpload")
-    .value =
-      "";
-
-
-  $("uploadCount")
-    .textContent =
-      "0 files selected";
-
-
-  $("photoPreviewGrid")
-    .innerHTML =
-      "";
-
+  $("photoPreviewGrid").innerHTML =
+    "";
 
   $("photoPreviewSection")
     .classList
-    .add(
-      "hidden"
+    .add("hidden");
+
+  await Promise.all([
+    loadRecentPhotos(),
+    loadDeerProfiles()
+  ]);
+
+  renderDeerProfiles();
+
+  $("uploadProgress").textContent =
+    `Finished. ${uploaded} uploaded, `
+    +
+    `${analyzed} analyzed`
+    +
+    (
+      failed
+        ? `, ${failed} failed.`
+        : "."
     );
-
-
-  await loadRecentPhotos();
 }
 
 
 async function loadRecentPhotos() {
-
-  if (
-    !currentUser
-  ) {
-
+  if (!currentUser) {
     return;
   }
 
-
   let query =
     sb
-      .from(
-        "trail_photos"
-      )
+      .from("trail_photos")
       .select("*")
       .order(
         "uploaded_at",
@@ -1193,80 +782,43 @@ async function loadRecentPhotos() {
           ascending: false
         }
       )
-      .limit(
-        24
-      );
-
+      .limit(24);
 
   const propertyId =
-    $("uploadProperty")
-      .value;
+    $("uploadProperty").value;
 
-
-  if (
-    propertyId
-  ) {
-
+  if (propertyId) {
     query =
       query.eq(
         "property_id",
         propertyId
       );
-
   }
 
-
-  const {
-    data,
-    error
-  } =
+  const { data, error } =
     await query;
 
-
-  if (
-    error
-  ) {
-
-    $("recentPhotos")
-      .innerHTML =
-        `<div class="muted">${error.message}</div>`;
-
+  if (error) {
+    $("recentPhotos").innerHTML =
+      `<div class="muted">${error.message}</div>`;
     return;
   }
-
 
   const rows =
-    data
-    ||
-    [];
+    data || [];
 
-
-  if (
-    !rows.length
-  ) {
-
-    $("recentPhotos")
-      .innerHTML =
-        '<div class="muted">No uploaded photos yet.</div>';
-
+  if (!rows.length) {
+    $("recentPhotos").innerHTML =
+      '<div class="muted">No uploaded photos yet.</div>';
     return;
   }
 
+  const cards = [];
 
-  const cards =
-    [];
-
-
-  for (
-    const row
-    of rows
-  ) {
-
+  for (const row of rows) {
     const {
-      data:
-        signed,
-      error:
-        signedError
+      data: signed,
+      error: signedError
     } =
       await sb.storage
         .from(
@@ -1277,17 +829,30 @@ async function loadRecentPhotos() {
           3600
         );
 
-
     if (
-      signedError
+      signedError ||
+      !signed?.signedUrl
     ) {
-
       continue;
     }
 
+    const analysis =
+      row.ai_analysis || null;
 
-    cards.push(
-      `
+    const analysisText =
+      analysis
+        ? `
+          <div class="small">
+            ${
+              analysis.deer_present
+                ? `🦌 ${analysis.deer_count} deer · ♂ ${analysis.buck_count} · ♀ ${analysis.doe_count}`
+                : "No deer detected"
+            }
+          </div>
+        `
+        : "";
+
+    cards.push(`
       <div class="photo-item">
 
         <img
@@ -1298,29 +863,24 @@ async function loadRecentPhotos() {
         <div class="photo-name">
           ${
             row.original_filename
-            ||
-            "Trail photo"
+            || "Trail photo"
           }
         </div>
 
         <div class="small muted">
-          ${
-            row.processing_status
-          }
+          ${row.processing_status}
         </div>
 
-      </div>
-      `
-    );
+        ${analysisText}
 
+      </div>
+    `);
   }
 
-
-  $("recentPhotos")
-    .innerHTML =
-      cards.join("")
-      ||
-      '<div class="muted">No accessible photos.</div>';
+  $("recentPhotos").innerHTML =
+    cards.join("")
+    ||
+    '<div class="muted">No accessible photos.</div>';
 }
 
 
@@ -1329,19 +889,14 @@ async function loadRecentPhotos() {
    ============================================================ */
 
 function renderPrivate() {
-
   renderPropertySelectors();
-
   renderCameraSelectors();
-
   renderCameras();
-
   renderDeerProfiles();
 }
 
 
 function renderPropertySelectors() {
-
   const options =
     properties.map(
       property =>
@@ -1349,36 +904,20 @@ function renderPropertySelectors() {
     )
     .join("");
 
+  $("propertySelect").innerHTML =
+    '<option value="">Choose property…</option>'
+    + options;
 
-  $("propertySelect")
-    .innerHTML =
-      '<option value="">Choose property…</option>'
-      +
-      options;
+  $("uploadProperty").innerHTML =
+    '<option value="">Choose property…</option>'
+    + options;
 
+  if (properties.length === 1) {
+    $("propertySelect").value =
+      properties[0].id;
 
-  $("uploadProperty")
-    .innerHTML =
-      '<option value="">Choose property…</option>'
-      +
-      options;
-
-
-  if (
-    properties.length
-    ===
-    1
-  ) {
-
-    $("propertySelect")
-      .value =
-        properties[0].id;
-
-
-    $("uploadProperty")
-      .value =
-        properties[0].id;
-
+    $("uploadProperty").value =
+      properties[0].id;
   }
 }
 
@@ -1386,136 +925,95 @@ function renderPropertySelectors() {
 function camerasForProperty(
   propertyId
 ) {
-
-  if (
-    !propertyId
-  ) {
-
+  if (!propertyId) {
     return cameras;
   }
 
-
-  return cameras
-    .filter(
-      camera =>
-        camera.property_id
-        ===
-        propertyId
-    );
+  return cameras.filter(
+    camera =>
+      camera.property_id === propertyId
+  );
 }
 
 
 function renderCameraSelectors() {
-
   const rows =
     camerasForProperty(
-      $("uploadProperty")
-        .value
+      $("uploadProperty").value
     );
 
-
-  $("uploadCamera")
-    .innerHTML =
-      '<option value="">Choose camera…</option>'
-      +
-      rows.map(
-        camera =>
-          `<option value="${camera.id}">${camera.name}</option>`
-      )
-      .join("");
+  $("uploadCamera").innerHTML =
+    '<option value="">Choose camera…</option>'
+    +
+    rows.map(
+      camera =>
+        `<option value="${camera.id}">${camera.name}</option>`
+    )
+    .join("");
 }
 
 
 function renderCameras() {
-
-  if (
-    !cameras.length
-  ) {
-
-    $("cameraCards")
-      .innerHTML =
-        '<div class="muted">No cameras yet.</div>';
-
+  if (!cameras.length) {
+    $("cameraCards").innerHTML =
+      '<div class="muted">No cameras yet.</div>';
     return;
   }
 
+  $("cameraCards").innerHTML =
+    cameras.map(camera => {
+      const features =
+        (
+          camera.camera_features
+          || []
+        )
+        .map(
+          feature =>
+            `<span class="meta-chip">${feature.feature_type}</span>`
+        )
+        .join("");
 
-  $("cameraCards")
-    .innerHTML =
-      cameras.map(
-        camera => {
+      return `
+        <div class="stack-item">
 
-          const features =
-            (
-              camera.camera_features
-              ||
-              []
-            )
-            .map(
-              feature =>
-                `<span class="meta-chip">${feature.feature_type}</span>`
-            )
-            .join("");
+          <strong>
+            📷 ${camera.name}
+          </strong>
 
+          <div class="small muted">
+            ${
+              camera.primary_habitat
+              || "Habitat not set"
+            }
 
-          return `
-            <div class="stack-item">
+            ${
+              camera.facing
+                ? ` · Facing ${camera.facing}`
+                : ""
+            }
+          </div>
 
-              <strong>
-                📷
-                ${camera.name}
-              </strong>
+          <div class="meta-row">
+            ${features}
+          </div>
 
-              <div class="small muted">
-
-                ${
-                  camera.primary_habitat
-                  ||
-                  "Habitat not set"
-                }
-
-                ${
-                  camera.facing
-                  ?
-                  ` · Facing ${camera.facing}`
-                  :
-                  ""
-                }
-
-              </div>
-
-              <div class="meta-row">
-                ${features}
-              </div>
-
-            </div>
-          `;
-
-        }
-      )
-      .join("");
+        </div>
+      `;
+    })
+    .join("");
 }
 
 
 function renderDeerProfiles() {
-
-  if (
-    !deerProfiles.length
-  ) {
-
-    $("deerCards")
-      .innerHTML =
-        '<div class="muted">No AI-created deer profiles yet.</div>';
-
+  if (!deerProfiles.length) {
+    $("deerCards").innerHTML =
+      '<div class="muted">No AI-created deer profiles yet.</div>';
     return;
   }
 
-
-  $("deerCards")
-    .innerHTML =
-      deerProfiles.map(
-        deer => `
-
+  $("deerCards").innerHTML =
+    deerProfiles.map(
+      deer => `
         <div class="stack-item">
 
           <div class="stack-item-head">
@@ -1523,9 +1021,7 @@ function renderDeerProfiles() {
             <div>
 
               <strong>
-
                 🦌
-
                 ${
                   deer.nickname
                   ||
@@ -1533,31 +1029,28 @@ function renderDeerProfiles() {
                   ||
                   "Unnamed deer"
                 }
-
               </strong>
 
               <div class="small muted">
-
                 ${
                   deer.sex
-                  ||
-                  "unknown"
+                  || "unknown"
                 }
-
                 ·
-
                 ${
                   deer.sighting_count
-                  ||
-                  0
+                  || 0
                 }
-
                 sightings
-
               </div>
 
-            </div>
+              ${
+                deer.estimated_age_class
+                  ? `<div class="small muted">Estimated age: ${deer.estimated_age_class}</div>`
+                  : ""
+              }
 
+            </div>
 
             <button
               class="secondary mini"
@@ -1569,35 +1062,29 @@ function renderDeerProfiles() {
 
           </div>
 
-
           ${
             deer.antler_signature
-            ?
-            `<p class="small">${deer.antler_signature}</p>`
-            :
-            ""
+              ? `<p class="small">Antlers: ${deer.antler_signature}</p>`
+              : ""
+          }
+
+          ${
+            deer.phenotype_notes
+              ? `<p class="small">Traits: ${deer.phenotype_notes}</p>`
+              : ""
           }
 
         </div>
-        `
-      )
-      .join("");
+      `
+    )
+    .join("");
 }
 
 
 function clearPrivateUi() {
-
-  properties =
-    [];
-
-
-  cameras =
-    [];
-
-
-  deerProfiles =
-    [];
-
+  properties = [];
+  cameras = [];
+  deerProfiles = [];
 }
 
 
@@ -1609,33 +1096,23 @@ async function loadJson(
   path,
   fallback
 ) {
-
   try {
-
     const response =
       await fetch(
         path,
         {
-          cache:
-            "no-store"
+          cache: "no-store"
         }
       );
 
-
-    if (
-      !response.ok
-    ) {
-
+    if (!response.ok) {
       throw new Error();
     }
-
 
     return await response.json();
 
   } catch {
-
     return fallback;
-
   }
 }
 
@@ -1646,96 +1123,54 @@ function miles(
   bLat,
   bLon
 ) {
-
-  const R =
-    3958.7613;
-
+  const R = 3958.7613;
 
   const dLat =
     rad(
-      bLat
-      -
-      aLat
+      bLat - aLat
     );
-
 
   const dLon =
     rad(
-      bLon
-      -
-      aLon
+      bLon - aLon
     );
 
-
   const a =
-    Math.sin(
-      dLat
-      /
-      2
-    ) ** 2
+    Math.sin(dLat / 2) ** 2
     +
-    Math.cos(
-      rad(
-        aLat
-      )
-    )
+    Math.cos(rad(aLat))
     *
-    Math.cos(
-      rad(
-        bLat
-      )
-    )
+    Math.cos(rad(bLat))
     *
-    Math.sin(
-      dLon
-      /
-      2
-    ) ** 2;
-
+    Math.sin(dLon / 2) ** 2;
 
   return 2
     *
     R
     *
     Math.asin(
-      Math.sqrt(
-        a
-      )
+      Math.sqrt(a)
     );
 }
 
 
-async function geocode(
-  query
-) {
-
+async function geocode(query) {
   const url =
     "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=us&q="
     +
-    encodeURIComponent(
-      query
-    );
-
+    encodeURIComponent(query);
 
   const response =
-    await fetch(
-      url
-    );
-
+    await fetch(url);
 
   const data =
     await response.json();
 
-
-  if (
-    !data.length
-  ) {
-
+  if (!data.length) {
     throw new Error(
       "Location not found."
     );
   }
-
 
   return {
     lat:
@@ -1755,55 +1190,39 @@ async function geocode(
 
 
 function initMapSafe() {
-
   if (
-    typeof L
-    ===
-    "undefined"
+    typeof L === "undefined"
   ) {
-
     return;
   }
 
-
   map =
-    L.map(
-      "map"
-    )
-    .setView(
-      [
-        32.8,
-        -86.8
-      ],
-      7
-    );
-
+    L.map("map")
+      .setView(
+        [
+          32.8,
+          -86.8
+        ],
+        7
+      );
 
   L.tileLayer(
     "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
     {
-      maxZoom:
-        19,
-
+      maxZoom: 19,
       attribution:
         "&copy; OpenStreetMap contributors"
     }
   )
-  .addTo(
-    map
-  );
-
+  .addTo(map);
 
   layerGroup =
     L.layerGroup()
-      .addTo(
-        map
-      );
+      .addTo(map);
 }
 
 
 function fillControls() {
-
   (
     cfg.radius_options
     ||
@@ -1817,309 +1236,192 @@ function fillControls() {
       50
     ]
   )
-  .forEach(
-    radius => {
+  .forEach(radius => {
+    const option =
+      document.createElement("option");
 
-      const option =
-        document.createElement(
-          "option"
-        );
+    option.value =
+      radius;
 
+    option.textContent =
+      radius + " miles";
 
-      option.value =
-        radius;
-
-
-      option.textContent =
-        radius
-        +
-        " miles";
-
-
-      if (
-        radius
-        ===
-        (
-          cfg.default_radius_miles
-          ||
-          5
-        )
-      ) {
-
-        option.selected =
-          true;
-
-      }
-
-
-      $("radius")
-        .appendChild(
-          option
-        );
-
+    if (
+      radius ===
+      (
+        cfg.default_radius_miles
+        || 5
+      )
+    ) {
+      option.selected = true;
     }
-  );
 
+    $("radius")
+      .appendChild(option);
+  });
 
-  const groups =
-    {};
+  const groups = {};
 
-
-  publicLands
-    .forEach(
-      land => {
-
-        (
-          groups[
-            land.type
-          ]
-          ??=
-          []
-        )
-        .push(
-          land
-        );
-
-      }
-    );
-
+  publicLands.forEach(land => {
+    (
+      groups[land.type]
+      ??=
+      []
+    ).push(land);
+  });
 
   Object
-    .keys(
-      groups
-    )
+    .keys(groups)
     .sort()
-    .forEach(
-      type => {
+    .forEach(type => {
+      const group =
+        document.createElement(
+          "optgroup"
+        );
 
-        const group =
-          document.createElement(
-            "optgroup"
-          );
+      group.label = type;
 
+      groups[type]
+        .sort(
+          (a, b) =>
+            a.name.localeCompare(
+              b.name
+            )
+        )
+        .forEach(land => {
+          const option =
+            document.createElement(
+              "option"
+            );
 
-        group.label =
-          type;
+          option.value =
+            land.id;
 
+          option.textContent =
+            land.name;
 
-        groups[type]
-          .sort(
-            (a, b) =>
-              a.name.localeCompare(
-                b.name
-              )
-          )
-          .forEach(
-            land => {
+          group.appendChild(option);
+        });
 
-              const option =
-                document.createElement(
-                  "option"
-                );
-
-
-              option.value =
-                land.id;
-
-
-              option.textContent =
-                land.name;
-
-
-              group.appendChild(
-                option
-              );
-
-            }
-          );
-
-
-        $("publicLand")
-          .appendChild(
-            group
-          );
-
-      }
-    );
+      $("publicLand")
+        .appendChild(group);
+    });
 }
 
 
 async function resolveSearchPoint() {
-
   const landId =
-    $("publicLand")
-      .value;
+    $("publicLand").value;
 
-
-  if (
-    landId
-  ) {
-
+  if (landId) {
     const land =
       publicLands.find(
         item =>
-          item.id
-          ===
-          landId
+          item.id === landId
       );
 
-
     if (
-      land.lat
-      !=
-      null
-      &&
-      land.lon
-      !=
-      null
+      land.lat != null &&
+      land.lon != null
     ) {
-
       return {
         lat:
-          Number(
-            land.lat
-          ),
+          Number(land.lat),
 
         lon:
-          Number(
-            land.lon
-          ),
+          Number(land.lon),
 
         label:
           land.name
       };
-
     }
-
 
     return geocode(
       land.search_label
       ||
-      land.name
-      +
-      ", Alabama"
+      land.name + ", Alabama"
     );
-
   }
 
-
   const query =
-    $("address")
-      .value
-      .trim();
+    $("address").value.trim();
 
-
-  if (
-    !query
-  ) {
-
+  if (!query) {
     throw new Error(
       "Enter an address/ZIP or select public land."
     );
   }
 
-
-  return geocode(
-    query
-  );
+  return geocode(query);
 }
 
 
 function publicLandText(
   observation
 ) {
-
   if (
     observation.nearest_public_land
     &&
     observation.nearest_public_land_distance_miles
-    !=
-    null
+      != null
   ) {
-
-    return `${Number(observation.nearest_public_land_distance_miles).toFixed(2)} mi to ${observation.nearest_public_land}`;
+    return `${Number(
+      observation.nearest_public_land_distance_miles
+    ).toFixed(2)} mi to ${observation.nearest_public_land}`;
   }
 
-
   return observation.nearest_public_land
-    ?
-    `Near ${observation.nearest_public_land}`
-    :
-    "Public-land distance not calculated yet";
+    ? `Near ${observation.nearest_public_land}`
+    : "Public-land distance not calculated yet";
 }
 
 
 function deerIcon() {
+  return L.divIcon({
+    className: "",
 
-  return L.divIcon(
-    {
-      className:
-        "",
+    html:
+      '<div style="width:40px;height:40px;border-radius:50%;background:#152019;border:2px solid #a5be86;display:flex;align-items:center;justify-content:center;font-size:23px">🦌</div>',
 
-      html:
-        '<div style="width:40px;height:40px;border-radius:50%;background:#152019;border:2px solid #a5be86;display:flex;align-items:center;justify-content:center;font-size:23px">🦌</div>',
+    iconSize:
+      [40, 40],
 
-      iconSize:
-        [
-          40,
-          40
-        ],
-
-      iconAnchor:
-        [
-          20,
-          20
-        ]
-    }
-  );
+    iconAnchor:
+      [20, 20]
+  });
 }
 
 
 function renderMapResults(
   center
 ) {
-
-  if (
-    !map
-    ||
-    !layerGroup
-  ) {
-
+  if (!map || !layerGroup) {
     return;
   }
 
-
   const radius =
     Number(
-      $("radius")
-        .value
+      $("radius").value
     );
-
 
   const minAcres =
     Number(
-      $("minAcres")
-        .value
-      ||
-      0
+      $("minAcres").value
+      || 0
     );
-
 
   const rows =
     observations
       .filter(
         observation =>
           observation.confirmed
-          ===
-          true
+          === true
           &&
           Number(
             observation.acres
-            ||
-            0
+            || 0
           )
-          >=
-          minAcres
+          >= minAcres
           &&
           Number.isFinite(
             Number(
@@ -2153,34 +1455,22 @@ function renderMapResults(
       .filter(
         observation =>
           observation.distance_miles
-          <=
-          radius
+          <= radius
       );
 
+  layerGroup.clearLayers();
 
-  layerGroup
-    .clearLayers();
-
-
-  if (
-    searchMarker
-  ) {
-
+  if (searchMarker) {
     map.removeLayer(
       searchMarker
     );
   }
 
-
-  if (
-    searchCircle
-  ) {
-
+  if (searchCircle) {
     map.removeLayer(
       searchCircle
     );
   }
-
 
   searchMarker =
     L.marker(
@@ -2189,10 +1479,7 @@ function renderMapResults(
         center.lon
       ]
     )
-    .addTo(
-      map
-    );
-
+    .addTo(map);
 
   searchCircle =
     L.circle(
@@ -2202,173 +1489,129 @@ function renderMapResults(
       ],
       {
         radius:
-          radius
-          *
-          1609.344
+          radius * 1609.344
       }
     )
-    .addTo(
-      map
+    .addTo(map);
+
+  rows.forEach(observation => {
+    L.marker(
+      [
+        observation.lat,
+        observation.lon
+      ],
+      {
+        icon:
+          deerIcon()
+      }
+    )
+    .addTo(layerGroup)
+    .bindPopup(
+      `
+      <b>🦌 ${observation.deer_count || 1} deer confirmed</b><br>
+      ♂ ${observation.buck_count || 0} bucks ·
+      ♀ ${observation.doe_count || 0} does<br>
+      ${publicLandText(observation)}
+
+      ${
+        observation.listing_url
+          ? `<p><a href="${observation.listing_url}" target="_blank" rel="noopener">View original listing</a></p>`
+          : ""
+      }
+      `
     );
-
-
-  rows.forEach(
-    observation => {
-
-      L.marker(
-        [
-          observation.lat,
-          observation.lon
-        ],
-        {
-          icon:
-            deerIcon()
-        }
-      )
-      .addTo(
-        layerGroup
-      )
-      .bindPopup(
-        `
-        <b>🦌 ${observation.deer_count || 1} deer confirmed</b><br>
-        ♂ ${observation.buck_count || 0} bucks ·
-        ♀ ${observation.doe_count || 0} does<br>
-        ${publicLandText(observation)}
-        ${
-          observation.listing_url
-          ?
-          `<p><a href="${observation.listing_url}" target="_blank" rel="noopener">View original listing</a></p>`
-          :
-          ""
-        }
-        `
-      );
-
-    }
-  );
-
+  });
 
   map.fitBounds(
-    searchCircle
-      .getBounds()
+    searchCircle.getBounds()
   );
 
+  $("mObs").textContent =
+    rows.length;
 
-  $("mObs")
-    .textContent =
-      rows.length;
+  $("mDeer").textContent =
+    rows.reduce(
+      (
+        total,
+        observation
+      ) =>
+        total
+        +
+        Number(
+          observation.deer_count
+          || 1
+        ),
+      0
+    );
 
+  $("mProfiles").textContent =
+    new Set(
+      rows
+        .map(
+          observation =>
+            observation.deer_id
+        )
+        .filter(Boolean)
+    ).size;
 
-  $("mDeer")
-    .textContent =
-      rows.reduce(
-        (
-          total,
-          observation
-        ) =>
-          total
-          +
-          Number(
-            observation.deer_count
-            ||
-            1
-          ),
-        0
-      );
+  $("mHarvested").textContent =
+    rows.filter(
+      observation =>
+        [
+          "reported",
+          "verified"
+        ]
+        .includes(
+          observation.harvest_status
+        )
+    ).length;
 
+  $("status").textContent =
+    `${rows.length} confirmed observations within ${radius} miles of ${center.label}.`;
 
-  $("mProfiles")
-    .textContent =
-      new Set(
-        rows
-          .map(
-            observation =>
-              observation.deer_id
-          )
-          .filter(
-            Boolean
-          )
-      )
-      .size;
+  $("results").innerHTML =
+    rows.map(
+      observation => `
+        <div class="card">
 
+          <b>
+            🦌
+            ${observation.deer_count || 1}
+            deer confirmed
+          </b>
 
-  $("mHarvested")
-    .textContent =
-      rows.filter(
-        observation =>
-          [
-            "reported",
-            "verified"
-          ]
-          .includes(
-            observation.harvest_status
-          )
-      )
-      .length;
+          <p>
+            ♂ ${observation.buck_count || 0} bucks ·
+            ♀ ${observation.doe_count || 0} does ·
+            ${publicLandText(observation)}
+          </p>
 
+          ${
+            observation.listing_url
+              ? `<a href="${observation.listing_url}" target="_blank" rel="noopener">View original listing</a>`
+              : ""
+          }
 
-  $("status")
-    .textContent =
-      `${rows.length} confirmed observations within ${radius} miles of ${center.label}.`;
-
-
-  $("results")
-    .innerHTML =
-      rows.map(
-        observation =>
-          `
-          <div class="card">
-
-            <b>
-              🦌
-              ${observation.deer_count || 1}
-              deer confirmed
-            </b>
-
-            <p>
-              ♂ ${observation.buck_count || 0} bucks ·
-              ♀ ${observation.doe_count || 0} does ·
-              ${publicLandText(observation)}
-            </p>
-
-            ${
-              observation.listing_url
-              ?
-              `<a href="${observation.listing_url}" target="_blank" rel="noopener">View original listing</a>`
-              :
-              ""
-            }
-
-          </div>
-          `
-      )
-      .join("")
-      ||
-      '<div class="panel">No confirmed outside observations match this search.</div>';
+        </div>
+      `
+    )
+    .join("")
+    ||
+    '<div class="panel">No confirmed outside observations match this search.</div>';
 }
 
 
 async function doSearch() {
-
-  $("status")
-    .textContent =
-      "Resolving location…";
-
+  $("status").textContent =
+    "Resolving location…";
 
   try {
-
     renderMapResults(
       await resolveSearchPoint()
     );
-
-  } catch (
-    error
-  ) {
-
-    $("status")
-      .textContent =
-        error.message;
-
+  } catch (error) {
+    $("status").textContent =
+      error.message;
   }
 }
 
@@ -2378,57 +1621,48 @@ async function doSearch() {
    ============================================================ */
 
 async function init() {
-
   [
     cfg,
     publicLands,
     observations,
     outsideProfiles
-  ]
-  =
-  await Promise.all(
-    [
-      loadJson(
-        "config.json",
-        {
-          default_radius_miles:
-            5,
+  ] =
+  await Promise.all([
+    loadJson(
+      "config.json",
+      {
+        default_radius_miles: 5,
 
-          radius_options:
-            [
-              1,
-              3,
-              5,
-              10,
-              15,
-              25,
-              50
-            ]
-        }
-      ),
+        radius_options: [
+          1,
+          3,
+          5,
+          10,
+          15,
+          25,
+          50
+        ]
+      }
+    ),
 
-      loadJson(
-        "public_lands.json",
-        []
-      ),
+    loadJson(
+      "public_lands.json",
+      []
+    ),
 
-      loadJson(
-        "observations.json",
-        []
-      ),
+    loadJson(
+      "observations.json",
+      []
+    ),
 
-      loadJson(
-        "deer_profiles.json",
-        []
-      )
-    ]
-  );
-
+    loadJson(
+      "deer_profiles.json",
+      []
+    )
+  ]);
 
   fillControls();
-
   setupTabs();
-
 
   $("signInBtn")
     .addEventListener(
@@ -2436,13 +1670,11 @@ async function init() {
       signIn
     );
 
-
   $("signUpBtn")
     .addEventListener(
       "click",
       signUp
     );
-
 
   $("signOutBtn")
     .addEventListener(
@@ -2450,13 +1682,11 @@ async function init() {
       signOut
     );
 
-
   $("addPropertyBtn")
     .addEventListener(
       "click",
       addProperty
     );
-
 
   $("addCameraBtn")
     .addEventListener(
@@ -2464,61 +1694,42 @@ async function init() {
       addCamera
     );
 
-
   $("propertySelect")
     .addEventListener(
       "change",
       () => {
-
-        $("uploadProperty")
-          .value =
-            $("propertySelect")
-              .value;
-
+        $("uploadProperty").value =
+          $("propertySelect").value;
 
         renderCameraSelectors();
-
         loadRecentPhotos();
-
       }
     );
-
 
   $("uploadProperty")
     .addEventListener(
       "change",
       () => {
-
         renderCameraSelectors();
-
         loadRecentPhotos();
-
       }
     );
-
 
   $("photoUpload")
     .addEventListener(
       "change",
       event => {
-
         const files =
-          event.target
-            .files;
+          event.target.files;
 
-
-        $("uploadCount")
-          .textContent =
-            `${files.length} file${files.length === 1 ? "" : "s"} selected`;
-
+        $("uploadCount").textContent =
+          `${files.length} file${files.length === 1 ? "" : "s"} selected`;
 
         renderSelectedPreviews(
           files
         );
-
       }
     );
-
 
   $("processUploadBtn")
     .addEventListener(
@@ -2526,13 +1737,11 @@ async function init() {
       uploadPhotos
     );
 
-
   $("refreshPhotosBtn")
     .addEventListener(
       "click",
       loadRecentPhotos
     );
-
 
   $("searchBtn")
     .addEventListener(
@@ -2540,32 +1749,22 @@ async function init() {
       doSearch
     );
 
-
   $("address")
     .addEventListener(
       "keydown",
       event => {
-
         if (
-          event.key
-          ===
-          "Enter"
+          event.key === "Enter"
         ) {
-
           doSearch();
-
         }
-
       }
     );
-
 
   if (
     initSupabase()
   ) {
-
     await restoreSession();
-
   }
 }
 
@@ -2578,3 +1777,16 @@ document.addEventListener(
   "DOMContentLoaded",
   init
 );
+'''
+
+path = Path("/mnt/data/app.js")
+path.write_text(app_js, encoding="utf-8")
+
+check = subprocess.run(
+    ["node", "--check", str(path)],
+    capture_output=True,
+    text=True
+)
+
+print("JS syntax:", "OK" if check.returncode == 0 else check.stderr)
+print(path)
