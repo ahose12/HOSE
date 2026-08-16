@@ -2,859 +2,268 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1"
-  >
-
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>HOSE Deer Intelligence</title>
-
-  <link
-    rel="stylesheet"
-    href="styles.css"
-  >
-
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-  >
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
-
 <body>
-
 <div class="shell">
 
-  <!-- ====================================================== -->
-  <!-- HEADER -->
-  <!-- ====================================================== -->
-
   <div class="hero">
-
-    <div class="eyebrow">
-      HOSE Deer Intelligence
-    </div>
-
-    <h1>
-      Search the area. Learn your deer. Hunt smarter.
-    </h1>
-
-    <p>
-      Search confirmed deer intelligence around public land
-      or a private address, then use your own trail-camera
-      history to understand individual deer, habitat,
-      movement and stand opportunities.
-    </p>
-
+    <div class="eyebrow">HOSE Deer Intelligence</div>
+    <h1>Search the area. Learn your deer. Hunt smarter.</h1>
+    <p>Outside deer intelligence plus private trail-camera history, individual deer, habitat context and hunt patterns.</p>
   </div>
 
-
-  <!-- ====================================================== -->
-  <!-- REAL ESTATE / PUBLIC LAND SEARCH -->
-  <!-- ====================================================== -->
-
+  <!-- EXISTING OUTSIDE INTEL -->
   <section class="panel">
-
-    <div class="eyebrow">
-      Area Intelligence
-    </div>
-
-    <h2>
-      Real Estate + Public Land Deer Map
-    </h2>
+    <div class="eyebrow">Area Intelligence</div>
+    <h2>Real Estate + Public Land Deer Map</h2>
 
     <div class="searchgrid">
-
-      <label>
-        Address / ZIP / city / coordinates
-
-        <input
-          id="address"
-          placeholder="Scottsboro, AL or 35768"
-        >
+      <label>Address / ZIP / city / coordinates
+        <input id="address" placeholder="Scottsboro, AL or 35768">
       </label>
 
-
-      <label>
-        Search radius
-
+      <label>Search radius
         <select id="radius"></select>
       </label>
 
-
-      <label>
-        Minimum acreage
-
-        <input
-          id="minAcres"
-          type="number"
-          min="0"
-          step=".25"
-          value="0"
-        >
+      <label>Minimum acreage
+        <input id="minAcres" type="number" min="0" step=".25" value="0">
       </label>
-
     </div>
-
 
     <div class="landgrid">
-
-      <label>
-        Public deer-hunting land
-
-        <select id="publicLand">
-
-          <option value="">
-            Choose public land…
-          </option>
-
-        </select>
-
+      <label>Public deer-hunting land
+        <select id="publicLand"><option value="">Choose public land…</option></select>
       </label>
 
-
-      <button
-        id="searchBtn"
-        class="primary"
-        type="button"
-      >
-        Search Deer Intel
-      </button>
-
+      <button id="searchBtn" class="primary" type="button">Search Deer Intel</button>
     </div>
-
   </section>
-
-
-  <!-- ====================================================== -->
-  <!-- OUTSIDE INTELLIGENCE METRICS -->
-  <!-- ====================================================== -->
 
   <div class="metrics">
-
-    <div class="metric">
-
-      <b id="mObs">
-        0
-      </b>
-
-      <span>
-        outside observations
-      </span>
-
-    </div>
-
-
-    <div class="metric">
-
-      <b id="mDeer">
-        0
-      </b>
-
-      <span>
-        visible deer
-      </span>
-
-    </div>
-
-
-    <div class="metric">
-
-      <b id="mProfiles">
-        0
-      </b>
-
-      <span>
-        matched deer profiles
-      </span>
-
-    </div>
-
-
-    <div class="metric">
-
-      <b id="mHarvested">
-        0
-      </b>
-
-      <span>
-        harvested / reported
-      </span>
-
-    </div>
-
+    <div class="metric"><b id="mObs">0</b><span>outside observations</span></div>
+    <div class="metric"><b id="mDeer">0</b><span>visible deer</span></div>
+    <div class="metric"><b id="mProfiles">0</b><span>matched profiles</span></div>
+    <div class="metric"><b id="mHarvested">0</b><span>harvested / reported</span></div>
   </div>
-
-
-  <!-- ====================================================== -->
-  <!-- MAP -->
-  <!-- ====================================================== -->
 
   <div id="map"></div>
+  <div id="status" class="panel small muted">Enter an address/ZIP or choose public land.</div>
+  <div id="results" class="results"></div>
 
-
-  <div
-    id="status"
-    class="panel small muted"
-  >
-    Enter an address/ZIP or choose public land.
-  </div>
-
-
-  <div
-    id="results"
-    class="results"
-  ></div>
-
-
-  <!-- ====================================================== -->
-  <!-- TRAIL CAMERA INTELLIGENCE -->
-  <!-- ====================================================== -->
-
-  <section
-    id="trail-intelligence"
-    class="trail-shell"
-  >
+  <!-- PRIVATE PORTAL -->
+  <section id="trail-intelligence" class="trail-shell">
 
     <div class="section-heading">
-
       <div>
-
-        <div class="eyebrow">
-          My Property Intelligence
-        </div>
-
-        <h2>
-          Trail Camera Intelligence
-        </h2>
-
-        <p>
-          Upload trail-camera photos, track individual deer
-          across seasons, record the habitat each camera is
-          watching, compare cameras and stands, and build
-          hunting-pattern intelligence over time.
-        </p>
-
+        <div class="eyebrow">My Property Intelligence</div>
+        <h2>Trail Camera Intelligence</h2>
+        <p>Sign in to keep your property, cameras, stands, photos and deer history private.</p>
       </div>
-
-
-      <span class="private-pill">
-        Private hunter data
-      </span>
-
+      <span class="private-pill">Supabase secured</span>
     </div>
 
-
-    <!-- ==================================================== -->
-    <!-- TRAIL CAMERA KPIs -->
-    <!-- ==================================================== -->
-
-    <div class="intel-kpis">
-
-      <div class="intel-kpi">
-
-        <span>
-          Photos analyzed
-        </span>
-
-        <strong id="tcPhotos">
-          0
-        </strong>
-
+    <!-- AUTH -->
+    <article class="intel-card" id="authCard">
+      <div class="card-heading">
+        <div>
+          <div class="eyebrow">Account</div>
+          <h3 id="authTitle">Sign in / Create account</h3>
+        </div>
+        <button id="signOutBtn" class="secondary hidden" type="button">Sign out</button>
       </div>
 
-
-      <div class="intel-kpi">
-
-        <span>
-          Deer sightings
-        </span>
-
-        <strong id="tcSightings">
-          0
-        </strong>
-
-      </div>
-
-
-      <div class="intel-kpi">
-
-        <span>
-          Identified bucks
-        </span>
-
-        <strong id="tcBucks">
-          0
-        </strong>
-
-      </div>
-
-
-      <div class="intel-kpi">
-
-        <span>
-          Active cameras
-        </span>
-
-        <strong id="tcCameras">
-          0
-        </strong>
-
-      </div>
-
-    </div>
-
-
-    <!-- ==================================================== -->
-    <!-- UPLOAD + CAMERA CONFIGURATION -->
-    <!-- ==================================================== -->
-
-    <div class="trail-grid two">
-
-
-      <!-- PHOTO UPLOAD -->
-
-      <article class="intel-card">
-
-        <div class="eyebrow">
-          1. Import
-        </div>
-
-        <h3>
-          Upload Trail-Camera Photos
-        </h3>
-
-
-        <label>
-          Camera
-
-          <select id="uploadCamera">
-
-            <option value="">
-              Choose camera…
-            </option>
-
-          </select>
-
-        </label>
-
-
-        <div class="dropzone">
-
-          <input
-            id="photoUpload"
-            type="file"
-            accept="image/*"
-            multiple
-          >
-
-
-          <div class="drop-icon">
-            📷
-          </div>
-
-
-          <strong>
-            Select photos from SD card / phone
-          </strong>
-
-
-          <span>
-            Photos stay in your browser during this preview.
-          </span>
-
-        </div>
-
-
-        <div class="upload-summary">
-
-          <span id="uploadCount">
-            0 files selected
-          </span>
-
-
-          <button
-            id="processUploadBtn"
-            class="primary"
-            type="button"
-          >
-            Queue for Analysis
-          </button>
-
-        </div>
-
-
-        <div
-          id="uploadMessage"
-          class="small muted"
-        >
-          Select photos to preview them below.
-        </div>
-
-
-        <!-- PHOTO PREVIEWS -->
-
-        <div
-          id="photoPreviewSection"
-          style="display:none; margin-top:18px;"
-        >
-
-          <div class="eyebrow">
-            Selected Photos
-          </div>
-
-          <div
-            id="photoPreviewGrid"
-            style="
-              display:grid;
-              grid-template-columns:
-                repeat(auto-fill,minmax(120px,1fr));
-              gap:10px;
-              margin-top:10px;
-            "
-          ></div>
-
-        </div>
-
-      </article>
-
-
-      <!-- CAMERA SETUP -->
-
-      <article class="intel-card">
-
-        <div class="eyebrow">
-          2. Camera Context
-        </div>
-
-        <h3>
-          Camera Setup + Habitat
-        </h3>
-
-
+      <div id="signedOutPanel">
         <div class="form-grid">
-
-          <label>
-
-            Camera name
-
-            <input
-              id="cameraName"
-              placeholder="North Ridge Cam"
-            >
-
+          <label>Email
+            <input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com">
           </label>
 
-
-          <label>
-
-            Camera facing
-
-            <select id="cameraFacing">
-
-              <option>N</option>
-              <option>NE</option>
-              <option>E</option>
-              <option>SE</option>
-              <option>S</option>
-              <option>SW</option>
-              <option>W</option>
-              <option>NW</option>
-
-            </select>
-
+          <label>Password
+            <input id="authPassword" type="password" autocomplete="current-password" placeholder="At least 6 characters">
           </label>
-
         </div>
 
-
-        <label>
-
-          Primary area / habitat
-
-          <select id="primaryHabitat">
-
-            <option>
-              Field / Food Plot
-            </option>
-
-            <option>
-              Scrape
-            </option>
-
-            <option>
-              Rub Line
-            </option>
-
-            <option>
-              Trail / Travel Corridor
-            </option>
-
-            <option>
-              Ridge
-            </option>
-
-            <option>
-              Hardwoods
-            </option>
-
-            <option>
-              Pines
-            </option>
-
-            <option>
-              Transition / Edge
-            </option>
-
-            <option>
-              Bedding Area
-            </option>
-
-            <option>
-              Water Source
-            </option>
-
-            <option>
-              Creek / Drain
-            </option>
-
-            <option>
-              Agricultural Field
-            </option>
-
-            <option>
-              Human / Structural
-            </option>
-
-            <option>
-              Road / Access
-            </option>
-
-            <option>
-              Other
-            </option>
-
-          </select>
-
-        </label>
-
-
-        <div class="habitat-options">
-
-          <label>
-            <input
-              type="checkbox"
-              value="Scrape"
-            >
-            Scrape
-          </label>
-
-
-          <label>
-            <input
-              type="checkbox"
-              value="Rub line"
-            >
-            Rub line
-          </label>
-
-
-          <label>
-            <input
-              type="checkbox"
-              value="Heavy trail"
-            >
-            Heavy trail
-          </label>
-
-
-          <label>
-            <input
-              type="checkbox"
-              value="Transition edge"
-            >
-            Transition edge
-          </label>
-
-
-          <label>
-            <input
-              type="checkbox"
-              value="Bedding nearby"
-            >
-            Bedding nearby
-          </label>
-
-
-          <label>
-            <input
-              type="checkbox"
-              value="Water / creek"
-            >
-            Water / creek
-          </label>
-
-
-          <label>
-            <input
-              type="checkbox"
-              value="Food source"
-            >
-            Food source
-          </label>
-
-
-          <label>
-            <input
-              type="checkbox"
-              value="Human / structure"
-            >
-            Human / structure
-          </label>
-
+        <div class="button-row">
+          <button id="signInBtn" class="primary" type="button">Sign In</button>
+          <button id="signUpBtn" class="secondary" type="button">Create Account</button>
         </div>
-
-
-        <label>
-
-          Camera notes
-
-          <textarea
-            id="cameraNotes"
-            rows="3"
-            placeholder="Camera points down a trail entering the food plot..."
-          ></textarea>
-
-        </label>
-
-
-        <button
-          id="saveCameraBtn"
-          class="secondary"
-          type="button"
-        >
-          Add Camera
-        </button>
-
-      </article>
-
-    </div>
-
-
-    <!-- ==================================================== -->
-    <!-- CAMERAS + DEER -->
-    <!-- ==================================================== -->
-
-    <div class="trail-grid two">
-
-
-      <article class="intel-card">
-
-        <div class="eyebrow">
-          Camera Network
-        </div>
-
-        <h3>
-          My Cameras
-        </h3>
-
-
-        <div
-          id="cameraCards"
-          class="stack-list"
-        ></div>
-
-      </article>
-
-
-      <article class="intel-card">
-
-        <div class="eyebrow">
-          Individual Deer
-        </div>
-
-        <h3>
-          Deer Profiles
-        </h3>
-
-
-        <div
-          id="deerCards"
-          class="stack-list"
-        ></div>
-
-      </article>
-
-    </div>
-
-
-    <!-- ==================================================== -->
-    <!-- STANDS + RECOMMENDATION -->
-    <!-- ==================================================== -->
-
-    <div class="trail-grid two">
-
-
-      <article class="intel-card">
-
-        <div class="card-heading">
-
-          <div>
-
-            <div class="eyebrow">
-              Hunt Setup
-            </div>
-
-            <h3>
-              Stands
-            </h3>
-
-          </div>
-
-
-          <button
-            id="addStandBtn"
-            class="secondary"
-            type="button"
-          >
-            + Add Stand
-          </button>
-
-        </div>
-
-
-        <div
-          id="standCards"
-          class="stack-list"
-        ></div>
-
-      </article>
-
-
-      <article
-        class="intel-card recommendation-card"
-      >
-
-        <div class="card-heading">
-
-          <div>
-
-            <div class="eyebrow">
-              Hunt Intelligence
-            </div>
-
-            <h3>
-              Best Current Opportunity
-            </h3>
-
-          </div>
-
-
-          <span
-            id="opportunityLabel"
-            class="opportunity-badge"
-          >
-            Waiting for data
-          </span>
-
-        </div>
-
-
-        <div
-          id="huntRecommendation"
-          class="recommendation-empty"
-        >
-          Upload observations and add stands to build
-          a relative hunt-opportunity recommendation.
-        </div>
-
-      </article>
-
-    </div>
-
-
-    <!-- ==================================================== -->
-    <!-- MOVEMENT SUMMARY -->
-    <!-- ==================================================== -->
-
-    <article class="intel-card">
-
-      <div class="eyebrow">
-        Pattern Analysis
       </div>
 
-      <h3>
-        Movement + Habitat Summary
-      </h3>
-
-
-      <div class="analytics-grid">
-
-        <div>
-
-          <span>
-            Top habitat
-          </span>
-
-          <strong id="topHabitat">
-            —
-          </strong>
-
-        </div>
-
-
-        <div>
-
-          <span>
-            Most active camera
-          </span>
-
-          <strong id="topCamera">
-            —
-          </strong>
-
-        </div>
-
-
-        <div>
-
-          <span>
-            Top sighting window
-          </span>
-
-          <strong id="topTime">
-            —
-          </strong>
-
-        </div>
-
-
-        <div>
-
-          <span>
-            Most common wind
-          </span>
-
-          <strong id="topWind">
-            —
-          </strong>
-
-        </div>
-
+      <div id="signedInPanel" class="hidden">
+        <strong id="signedInEmail"></strong>
+        <div class="small muted">Your private camera/photo records are scoped to this account by Supabase RLS.</div>
       </div>
 
+      <div id="authMessage" class="small muted"></div>
     </article>
 
-  </section>
+    <!-- SETUP -->
+    <div id="privatePortal" class="hidden">
 
+      <div class="trail-grid two">
+        <article class="intel-card">
+          <div class="eyebrow">Property</div>
+          <h3>My Hunting Property</h3>
+
+          <label>Existing property
+            <select id="propertySelect"><option value="">Choose property…</option></select>
+          </label>
+
+          <div class="divider">or add one</div>
+
+          <div class="form-grid">
+            <label>Property name
+              <input id="propertyName" placeholder="Jackson County Farm">
+            </label>
+
+            <label>Acreage
+              <input id="propertyAcres" type="number" min="0" step=".1" placeholder="120">
+            </label>
+          </div>
+
+          <div class="form-grid">
+            <label>County
+              <input id="propertyCounty" placeholder="Jackson">
+            </label>
+
+            <label>State
+              <input id="propertyState" value="AL">
+            </label>
+          </div>
+
+          <button id="addPropertyBtn" class="secondary" type="button">Add Property</button>
+          <div id="propertyMessage" class="small muted"></div>
+        </article>
+
+        <article class="intel-card">
+          <div class="eyebrow">Camera Context</div>
+          <h3>Add Camera</h3>
+
+          <div class="form-grid">
+            <label>Camera name
+              <input id="cameraName" placeholder="North Ridge Cam">
+            </label>
+
+            <label>Facing
+              <select id="cameraFacing">
+                <option>N</option><option>NE</option><option>E</option><option>SE</option>
+                <option>S</option><option>SW</option><option>W</option><option>NW</option>
+              </select>
+            </label>
+          </div>
+
+          <label>Primary habitat
+            <select id="primaryHabitat">
+              <option>Field / Food Plot</option><option>Scrape</option><option>Rub Line</option>
+              <option>Trail / Travel Corridor</option><option>Ridge</option><option>Hardwoods</option>
+              <option>Pines</option><option>Transition / Edge</option><option>Bedding Area</option>
+              <option>Water Source</option><option>Creek / Drain</option><option>Agricultural Field</option>
+              <option>Human / Structural</option><option>Road / Access</option><option>Other</option>
+            </select>
+          </label>
+
+          <div class="habitat-options">
+            <label><input type="checkbox" value="Scrape"> Scrape</label>
+            <label><input type="checkbox" value="Rub line"> Rub line</label>
+            <label><input type="checkbox" value="Heavy trail"> Heavy trail</label>
+            <label><input type="checkbox" value="Transition edge"> Transition edge</label>
+            <label><input type="checkbox" value="Bedding nearby"> Bedding nearby</label>
+            <label><input type="checkbox" value="Water / creek"> Water / creek</label>
+            <label><input type="checkbox" value="Food source"> Food source</label>
+            <label><input type="checkbox" value="Human / structure"> Human / structure</label>
+          </div>
+
+          <label>Notes
+            <textarea id="cameraNotes" rows="3" placeholder="Trail entering field edge..."></textarea>
+          </label>
+
+          <button id="addCameraBtn" class="secondary" type="button">Add Camera</button>
+          <div id="cameraMessage" class="small muted"></div>
+        </article>
+      </div>
+
+      <!-- UPLOAD -->
+      <article class="intel-card">
+        <div class="eyebrow">Upload</div>
+        <h3>Trail-Camera Photos</h3>
+
+        <div class="form-grid">
+          <label>Property
+            <select id="uploadProperty"><option value="">Choose property…</option></select>
+          </label>
+
+          <label>Camera
+            <select id="uploadCamera"><option value="">Choose camera…</option></select>
+          </label>
+        </div>
+
+        <div class="dropzone">
+          <input id="photoUpload" type="file" accept="image/*" multiple>
+          <div class="drop-icon">📷</div>
+          <strong>Select trail-camera photos</strong>
+          <span>These will upload into your private Supabase Storage folder.</span>
+        </div>
+
+        <div class="upload-summary">
+          <span id="uploadCount">0 files selected</span>
+          <button id="processUploadBtn" class="primary" type="button">Upload Photos</button>
+        </div>
+
+        <div id="uploadProgress" class="small muted"></div>
+
+        <div id="photoPreviewSection" class="hidden">
+          <div class="eyebrow">Selected Photos</div>
+          <div id="photoPreviewGrid" class="photo-grid"></div>
+        </div>
+      </article>
+
+      <!-- SAVED DATA -->
+      <div class="trail-grid two">
+        <article class="intel-card">
+          <div class="eyebrow">Camera Network</div>
+          <h3>My Cameras</h3>
+          <div id="cameraCards" class="stack-list"></div>
+        </article>
+
+        <article class="intel-card">
+          <div class="eyebrow">Individual Deer</div>
+          <h3>My Deer Profiles</h3>
+          <div id="deerCards" class="stack-list"></div>
+        </article>
+      </div>
+
+      <article class="intel-card">
+        <div class="card-heading">
+          <div>
+            <div class="eyebrow">Private Storage</div>
+            <h3>Recent Uploaded Photos</h3>
+          </div>
+          <button id="refreshPhotosBtn" class="secondary" type="button">Refresh</button>
+        </div>
+
+        <div id="recentPhotos" class="photo-grid"></div>
+      </article>
+
+      <article class="intel-card">
+        <div class="eyebrow">AI Processing</div>
+        <h3>Next Stage</h3>
+        <p id="aiStatus">
+          Uploaded photos are stored with <code>processing_status = queued</code>.
+          The next patch adds the server-side worker that sends queued images through deer detection + OpenAI and writes sightings/deer profiles.
+        </p>
+      </article>
+    </div>
+  </section>
 </div>
 
-
-<script
-  src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-></script>
-
-<script src="app.js"></script>
-
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<script src="app.js?v=20260815-supabase1"></script>
 </body>
 </html>

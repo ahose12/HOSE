@@ -1,2128 +1,948 @@
+const $ = id => document.getElementById(id);
+const rad = d => d * Math.PI / 180;
+
 let cfg = {};
 let publicLands = [];
 let observations = [];
-let profiles = [];
+let outsideProfiles = [];
 
-let map;
-let layerGroup;
-let searchCircle;
-let searchMarker;
+let map = null;
+let layerGroup = null;
+let searchCircle = null;
+let searchMarker = null;
 
-const $ = id => document.getElementById(id);
+let sb = null;
+let currentUser = null;
+let properties = [];
+let cameras = [];
+let deerProfiles = [];
 
-const rad = d => d * Math.PI / 180;
+/* ------------------------------------------------------------
+   SUPABASE
+------------------------------------------------------------ */
 
+function initSupabase() {
+  const c = window.HOSE_SUPABASE || {};
 
-/* ============================================================
-   BASIC HELPERS
-   ============================================================ */
+  if (
+    !c.url ||
+    !c.publishableKey ||
+    c.url.includes("PASTE_") ||
+    c.publishableKey.includes("PASTE_")
+  ) {
+    $("authMessage").textContent =
+      "Supabase is not configured yet. Fill in public/supabase-config.js.";
+    return false;
+  }
 
-function miles(
-    startLat,
-    startLon,
-    endLat,
-    endLon
-) {
+  sb = window.supabase.createClient(c.url, c.publishableKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    }
+  });
 
-    const R = 3958.7613;
-
-    const dLat = rad(
-        endLat - startLat
-    );
-
-    const dLon = rad(
-        endLon - startLon
-    );
-
-    const a =
-        Math.sin(dLat / 2) ** 2
-        +
-        Math.cos(rad(startLat))
-        *
-        Math.cos(rad(endLat))
-        *
-        Math.sin(dLon / 2) ** 2;
-
-    return (
-        2
-        *
-        R
-        *
-        Math.asin(Math.sqrt(a))
-    );
+  return true;
 }
 
+async function restoreSession() {
+  if (!sb) return;
 
-function money(value) {
+  const { data, error } = await sb.auth.getSession();
 
-    if (value == null) {
-        return "Price unavailable";
+  if (error) {
+    $("authMessage").textContent = error.message;
+    return;
+  }
+
+  await applySession(data.session);
+
+  sb.auth.onAuthStateChange(async (_event, session) => {
+    await applySession(session);
+  });
+}
+
+async function applySession(session) {
+  currentUser = session?.user || null;
+
+  $("signedOutPanel").classList.toggle("hidden", !!currentUser);
+  $("signedInPanel").classList.toggle("hidden", !currentUser);
+  $("signOutBtn").classList.toggle("hidden", !currentUser);
+  $("privatePortal").classList.toggle("hidden", !currentUser);
+
+  if (!currentUser) {
+    $("authTitle").textContent = "Sign in / Create account";
+    $("signedInEmail").textContent = "";
+    clearPrivateUi();
+    return;
+  }
+
+  $("authTitle").textContent = "Signed in";
+  $("signedInEmail").textContent = currentUser.email || currentUser.id;
+  $("authMessage").textContent = "";
+
+  await refreshPrivateData();
+}
+
+async function signIn() {
+  const email = $("authEmail").value.trim();
+  const password = $("authPassword").value;
+
+  if (!email || !password) {
+    $("authMessage").textContent = "Enter email and password.";
+    return;
+  }
+
+  $("authMessage").textContent = "Signing in…";
+
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+
+  $("authMessage").textContent = error ? error.message : "Signed in.";
+}
+
+async function signUp() {
+  const email = $("authEmail").value.trim();
+  const password = $("authPassword").value;
+
+  if (!email || !password) {
+    $("authMessage").textContent = "Enter email and password.";
+    return;
+  }
+
+  $("authMessage").textContent = "Creating account…";
+
+  const { data, error } = await sb.auth.signUp({
+    email,
+    password,
+    options: {
+      emailRedirectTo: window.location.origin + window.location.pathname
+    }
+  });
+
+  if (error) {
+    $("authMessage").textContent = error.message;
+    return;
+  }
+
+  if (!data.session) {
+    $("authMessage").textContent =
+      "Account created. Check your email to confirm it, then return and sign in.";
+  } else {
+    $("authMessage").textContent = "Account created and signed in.";
+  }
+}
+
+async function signOut() {
+  await sb.auth.signOut();
+}
+
+/* ------------------------------------------------------------
+   PRIVATE CRUD
+------------------------------------------------------------ */
+
+async function refreshPrivateData() {
+  if (!currentUser) return;
+
+  await Promise.all([
+    loadProperties(),
+    loadCameras(),
+    loadDeerProfiles()
+  ]);
+
+  renderPrivate();
+  await loadRecentPhotos();
+}
+
+async function loadProperties() {
+  const { data, error } = await sb
+    .from("properties")
+    .select("*")
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    $("propertyMessage").textContent = error.message;
+    return;
+  }
+
+  properties = data || [];
+}
+
+async function loadCameras() {
+  const { data, error } = await sb
+    .from("cameras")
+    .select("*, camera_features(feature_type)")
+    .eq("active", true)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    $("cameraMessage").textContent = error.message;
+    return;
+  }
+
+  cameras = data || [];
+}
+
+async function loadDeerProfiles() {
+  const { data, error } = await sb
+    .from("deer_profiles")
+    .select("*")
+    .order("last_seen", { ascending: false });
+
+  if (error) {
+    console.error(error);
+    deerProfiles = [];
+    return;
+  }
+
+  deerProfiles = data || [];
+}
+
+async function addProperty() {
+  if (!currentUser) return;
+
+  const name = $("propertyName").value.trim();
+
+  if (!name) {
+    $("propertyMessage").textContent = "Property name is required.";
+    return;
+  }
+
+  const payload = {
+    user_id: currentUser.id,
+    name,
+    county: $("propertyCounty").value.trim() || null,
+    state: $("propertyState").value.trim() || "AL",
+    acreage: $("propertyAcres").value
+      ? Number($("propertyAcres").value)
+      : null
+  };
+
+  $("propertyMessage").textContent = "Saving…";
+
+  const { error } = await sb.from("properties").insert(payload);
+
+  if (error) {
+    $("propertyMessage").textContent = error.message;
+    return;
+  }
+
+  $("propertyName").value = "";
+  $("propertyAcres").value = "";
+  $("propertyCounty").value = "";
+
+  $("propertyMessage").textContent = "Property added.";
+  await refreshPrivateData();
+}
+
+async function addCamera() {
+  if (!currentUser) return;
+
+  const propertyId = $("propertySelect").value;
+  const name = $("cameraName").value.trim();
+
+  if (!propertyId) {
+    $("cameraMessage").textContent = "Choose a property first.";
+    return;
+  }
+
+  if (!name) {
+    $("cameraMessage").textContent = "Camera name is required.";
+    return;
+  }
+
+  const cameraPayload = {
+    user_id: currentUser.id,
+    property_id: propertyId,
+    name,
+    facing: $("cameraFacing").value,
+    primary_habitat: $("primaryHabitat").value,
+    notes: $("cameraNotes").value.trim() || null
+  };
+
+  $("cameraMessage").textContent = "Saving…";
+
+  const { data, error } = await sb
+    .from("cameras")
+    .insert(cameraPayload)
+    .select()
+    .single();
+
+  if (error) {
+    $("cameraMessage").textContent = error.message;
+    return;
+  }
+
+  const features = Array.from(
+    document.querySelectorAll(".habitat-options input:checked")
+  ).map(x => x.value);
+
+  if (features.length) {
+    const featureRows = features.map(feature => ({
+      user_id: currentUser.id,
+      camera_id: data.id,
+      feature_type: feature
+    }));
+
+    const { error: featureError } = await sb
+      .from("camera_features")
+      .insert(featureRows);
+
+    if (featureError) {
+      $("cameraMessage").textContent =
+        "Camera saved, but features failed: " + featureError.message;
+    }
+  }
+
+  $("cameraName").value = "";
+  $("cameraNotes").value = "";
+  document.querySelectorAll(".habitat-options input").forEach(x => {
+    x.checked = false;
+  });
+
+  $("cameraMessage").textContent = "Camera added.";
+  await refreshPrivateData();
+}
+
+async function renameDeer(profileId, currentName) {
+  const nickname = prompt("Deer nickname:", currentName || "");
+
+  if (nickname === null) return;
+
+  const { error } = await sb
+    .from("deer_profiles")
+    .update({ nickname: nickname.trim() || null })
+    .eq("id", profileId);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  await loadDeerProfiles();
+  renderDeerProfiles();
+}
+
+/* ------------------------------------------------------------
+   PHOTO UPLOAD
+------------------------------------------------------------ */
+
+function safeFileName(name) {
+  return name
+    .replace(/[^a-zA-Z0-9._-]+/g, "_")
+    .replace(/_+/g, "_")
+    .slice(-120);
+}
+
+function renderSelectedPreviews(files) {
+  const section = $("photoPreviewSection");
+  const grid = $("photoPreviewGrid");
+
+  grid.innerHTML = "";
+
+  if (!files.length) {
+    section.classList.add("hidden");
+    return;
+  }
+
+  section.classList.remove("hidden");
+
+  Array.from(files).slice(0, 100).forEach(file => {
+    const url = URL.createObjectURL(file);
+
+    const item = document.createElement("div");
+    item.className = "photo-item";
+    item.innerHTML = `
+      <img src="${url}" alt="">
+      <div class="photo-name">${file.name}</div>
+    `;
+
+    grid.appendChild(item);
+  });
+}
+
+async function uploadPhotos() {
+  if (!currentUser) return;
+
+  const propertyId = $("uploadProperty").value;
+  const cameraId = $("uploadCamera").value;
+  const files = Array.from($("photoUpload").files);
+
+  if (!propertyId || !cameraId) {
+    $("uploadProgress").textContent =
+      "Choose both a property and camera.";
+    return;
+  }
+
+  if (!files.length) {
+    $("uploadProgress").textContent = "Select photos first.";
+    return;
+  }
+
+  $("processUploadBtn").disabled = true;
+
+  let success = 0;
+  let failed = 0;
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+
+    $("uploadProgress").textContent =
+      `Uploading ${i + 1} of ${files.length}: ${file.name}`;
+
+    const fileId = crypto.randomUUID();
+    const path =
+      `${currentUser.id}/${propertyId}/${cameraId}/${fileId}-${safeFileName(file.name)}`;
+
+    const { error: uploadError } = await sb.storage
+      .from("trail-camera-photos")
+      .upload(path, file, {
+        contentType: file.type || "image/jpeg",
+        cacheControl: "3600",
+        upsert: false
+      });
+
+    if (uploadError) {
+      console.error(uploadError);
+      failed++;
+      continue;
     }
 
-    return new Intl.NumberFormat(
-        "en-US",
-        {
-            style: "currency",
-            currency: "USD",
-            maximumFractionDigits: 0
-        }
-    ).format(value);
-}
+    const capturedAt =
+      file.lastModified
+        ? new Date(file.lastModified).toISOString()
+        : null;
 
+    const { error: rowError } = await sb
+      .from("trail_photos")
+      .insert({
+        user_id: currentUser.id,
+        property_id: propertyId,
+        camera_id: cameraId,
+        storage_path: path,
+        original_filename: file.name,
+        captured_at: capturedAt,
+        processing_status: "queued"
+      });
 
-async function loadJson(
-    path,
-    fallback
-) {
+    if (rowError) {
+      console.error(rowError);
 
-    try {
+      // Best-effort cleanup if metadata insert fails.
+      await sb.storage
+        .from("trail-camera-photos")
+        .remove([path]);
 
-        const response = await fetch(
-            path,
-            {
-                cache: "no-store"
-            }
-        );
-
-        if (!response.ok) {
-            throw new Error();
-        }
-
-        return await response.json();
-
-    } catch {
-
-        return fallback;
-
-    }
-}
-
-
-/* ============================================================
-   GEOCODING
-   ============================================================ */
-
-async function geocode(query) {
-
-    const url =
-        "https://nominatim.openstreetmap.org/search"
-        +
-        "?format=jsonv2"
-        +
-        "&limit=1"
-        +
-        "&countrycodes=us"
-        +
-        "&q="
-        +
-        encodeURIComponent(query);
-
-
-    const response = await fetch(
-        url,
-        {
-            headers: {
-                Accept: "application/json"
-            }
-        }
-    );
-
-
-    const data = await response.json();
-
-
-    if (!data.length) {
-
-        throw new Error(
-            "Location not found."
-        );
-
+      failed++;
+      continue;
     }
 
+    success++;
+  }
 
-    return {
+  $("uploadProgress").textContent =
+    `Done. ${success} uploaded${failed ? `, ${failed} failed` : ""}. ` +
+    `Uploaded photos are now queued for AI processing.`;
 
-        lat: Number(
-            data[0].lat
-        ),
+  $("processUploadBtn").disabled = false;
+  $("photoUpload").value = "";
+  $("uploadCount").textContent = "0 files selected";
+  $("photoPreviewGrid").innerHTML = "";
+  $("photoPreviewSection").classList.add("hidden");
 
-        lon: Number(
-            data[0].lon
-        ),
-
-        label:
-            data[0].display_name
-    };
+  await loadRecentPhotos();
 }
 
-
-/* ============================================================
-   MAP
-   ============================================================ */
-
-function initMap() {
-
-    map = L.map(
-        "map"
-    ).setView(
-        [
-            32.8,
-            -86.8
-        ],
-        7
-    );
-
-
-    L.tileLayer(
-        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-        {
-            maxZoom: 19,
-
-            attribution:
-                "&copy; OpenStreetMap contributors"
-        }
-    ).addTo(map);
-
-
-    layerGroup =
-        L.layerGroup()
-        .addTo(map);
-}
-
-
-/* ============================================================
-   SEARCH CONTROLS
-   ============================================================ */
-
-function fillControls() {
-
-    const radiusOptions =
-        cfg.radius_options
-        ||
-        [
-            1,
-            3,
-            5,
-            10,
-            15,
-            25,
-            50
-        ];
-
-
-    radiusOptions.forEach(
-        radius => {
-
-            const option =
-                document.createElement(
-                    "option"
-                );
-
-
-            option.value =
-                radius;
-
-
-            option.textContent =
-                radius
-                +
-                " miles";
-
-
-            if (
-                radius
-                ===
-                (
-                    cfg.default_radius_miles
-                    ||
-                    5
-                )
-            ) {
-
-                option.selected =
-                    true;
-
-            }
-
-
-            $("radius")
-                .appendChild(
-                    option
-                );
-        }
-    );
-
-
-    const groups = {};
-
-
-    publicLands.forEach(
-        land => {
-
-            if (
-                !groups[
-                    land.type
-                ]
-            ) {
-
-                groups[
-                    land.type
-                ] = [];
-
-            }
-
-
-            groups[
-                land.type
-            ].push(
-                land
-            );
-        }
-    );
-
-
-    Object
-        .keys(groups)
-        .sort()
-        .forEach(
-            type => {
-
-                const optGroup =
-                    document.createElement(
-                        "optgroup"
-                    );
-
-
-                optGroup.label =
-                    type;
-
-
-                groups[type]
-                    .sort(
-                        (a, b) =>
-                            a.name.localeCompare(
-                                b.name
-                            )
-                    )
-                    .forEach(
-                        land => {
-
-                            const option =
-                                document.createElement(
-                                    "option"
-                                );
-
-
-                            option.value =
-                                land.id;
-
-
-                            option.textContent =
-                                land.name;
-
-
-                            optGroup.appendChild(
-                                option
-                            );
-                        }
-                    );
-
-
-                $("publicLand")
-                    .appendChild(
-                        optGroup
-                    );
-            }
-        );
-}
-
-
-/* ============================================================
-   RESOLVE SEARCH POINT
-   ============================================================ */
-
-async function resolveSearch() {
-
-    const landId =
-        $("publicLand")
-        .value;
-
-
-    if (landId) {
-
-        const land =
-            publicLands.find(
-                x =>
-                    x.id
-                    ===
-                    landId
-            );
-
-
-        if (
-            land
-            &&
-            land.lat != null
-            &&
-            land.lon != null
-        ) {
-
-            return {
-
-                lat:
-                    Number(
-                        land.lat
-                    ),
-
-                lon:
-                    Number(
-                        land.lon
-                    ),
-
-                label:
-                    land.name
-            };
-
-        }
-
-
-        return geocode(
-            land.search_label
-            ||
-            (
-                land.name
-                +
-                ", Alabama"
-            )
-        );
+async function loadRecentPhotos() {
+  if (!currentUser) return;
+
+  const propertyId = $("uploadProperty").value || null;
+
+  let query = sb
+    .from("trail_photos")
+    .select("*")
+    .order("uploaded_at", { ascending: false })
+    .limit(24);
+
+  if (propertyId) {
+    query = query.eq("property_id", propertyId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    $("recentPhotos").innerHTML =
+      `<div class="muted">${error.message}</div>`;
+    return;
+  }
+
+  const rows = data || [];
+
+  if (!rows.length) {
+    $("recentPhotos").innerHTML =
+      '<div class="muted">No uploaded photos yet.</div>';
+    return;
+  }
+
+  const cards = [];
+
+  for (const row of rows) {
+    const { data: signed, error: signedError } = await sb.storage
+      .from("trail-camera-photos")
+      .createSignedUrl(row.storage_path, 3600);
+
+    if (signedError) {
+      console.error(signedError);
+      continue;
     }
 
+    cards.push(`
+      <div class="photo-item">
+        <img src="${signed.signedUrl}" alt="">
+        <div class="photo-name">${row.original_filename || "Trail photo"}</div>
+        <div class="small muted">${row.processing_status}</div>
+      </div>
+    `);
+  }
 
-    const query =
-        $("address")
-        .value
-        .trim();
-
-
-    if (!query) {
-
-        throw new Error(
-            "Enter an address, ZIP, city, coordinates, or public land."
-        );
-
-    }
-
-
-    const coordinateMatch =
-        query.match(
-            /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/
-        );
-
-
-    if (coordinateMatch) {
-
-        return {
-
-            lat:
-                Number(
-                    coordinateMatch[1]
-                ),
-
-            lon:
-                Number(
-                    coordinateMatch[2]
-                ),
-
-            label:
-                query
-        };
-
-    }
-
-
-    return geocode(
-        query
-    );
+  $("recentPhotos").innerHTML =
+    cards.join("") || '<div class="muted">No accessible photos.</div>';
 }
 
+/* ------------------------------------------------------------
+   PRIVATE RENDER
+------------------------------------------------------------ */
 
-/* ============================================================
-   DEER ICON
-   ============================================================ */
-
-function deerIcon(
-    count
-) {
-
-    return L.divIcon({
-
-        className:
-            "",
-
-        html:
-            `
-            <div
-              style="
-                width:40px;
-                height:40px;
-                border-radius:50%;
-                background:#152019;
-                border:2px solid #a5be86;
-                display:flex;
-                align-items:center;
-                justify-content:center;
-                font-size:23px;
-                position:relative;
-              "
-            >
-              🦌
-
-              ${
-                  count > 1
-                  ?
-                  `
-                  <span
-                    style="
-                      position:absolute;
-                      top:-7px;
-                      right:-7px;
-                      background:#a5be86;
-                      color:#10170f;
-                      min-width:19px;
-                      height:19px;
-                      border-radius:999px;
-                      font-size:11px;
-                      font-weight:bold;
-                      display:flex;
-                      align-items:center;
-                      justify-content:center;
-                      padding:0 4px;
-                    "
-                  >
-                    ${count}
-                  </span>
-                  `
-                  :
-                  ""
-              }
-            </div>
-            `,
-
-        iconSize:
-            [
-                40,
-                40
-            ],
-
-        iconAnchor:
-            [
-                20,
-                20
-            ],
-
-        popupAnchor:
-            [
-                0,
-                -20
-            ]
-
-    });
+function renderPrivate() {
+  renderPropertySelectors();
+  renderCameraSelectors();
+  renderCameras();
+  renderDeerProfiles();
 }
 
+function renderPropertySelectors() {
+  const options = properties.map(p =>
+    `<option value="${p.id}">${p.name}</option>`
+  ).join("");
 
-/* ============================================================
-   PUBLIC LAND TEXT
-   ============================================================ */
+  const selectedMain = $("propertySelect").value;
+  const selectedUpload = $("uploadProperty").value;
 
-function publicLandText(
-    observation
-) {
+  $("propertySelect").innerHTML =
+    '<option value="">Choose property…</option>' + options;
 
-    if (
-        observation.nearest_public_land
-        &&
-        observation.nearest_public_land_distance_miles
-        != null
-    ) {
+  $("uploadProperty").innerHTML =
+    '<option value="">Choose property…</option>' + options;
 
-        return (
-            Number(
-                observation
-                    .nearest_public_land_distance_miles
-            ).toFixed(2)
-            +
-            " mi to "
-            +
-            observation.nearest_public_land
-        );
+  if (properties.some(p => p.id === selectedMain)) {
+    $("propertySelect").value = selectedMain;
+  } else if (properties.length === 1) {
+    $("propertySelect").value = properties[0].id;
+  }
 
-    }
-
-
-    if (
-        observation
-            .nearest_public_land
-    ) {
-
-        return (
-            "Near "
-            +
-            observation
-                .nearest_public_land
-        );
-
-    }
-
-
-    return (
-        "Public-land distance not calculated yet"
-    );
+  if (properties.some(p => p.id === selectedUpload)) {
+    $("uploadProperty").value = selectedUpload;
+  } else if (properties.length === 1) {
+    $("uploadProperty").value = properties[0].id;
+  }
 }
 
+function camerasForProperty(propertyId) {
+  if (!propertyId) return cameras;
+  return cameras.filter(c => c.property_id === propertyId);
+}
 
-/* ============================================================
-   OUTSIDE OBSERVATION POPUP
-   ============================================================ */
+function renderCameraSelectors() {
+  const propertyId = $("uploadProperty").value;
+  const rows = camerasForProperty(propertyId);
 
-function observationPopup(
-    observation
-) {
+  $("uploadCamera").innerHTML =
+    '<option value="">Choose camera…</option>' +
+    rows.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
+}
 
-    const bucks =
-        Number(
-            observation.buck_count
-            ||
-            0
-        );
+function renderCameras() {
+  if (!cameras.length) {
+    $("cameraCards").innerHTML =
+      '<div class="muted">No cameras yet.</div>';
+    return;
+  }
 
-
-    const does =
-        Number(
-            observation.doe_count
-            ||
-            0
-        );
-
-
-    const fawns =
-        Number(
-            observation.fawn_count
-            ||
-            0
-        );
-
+  $("cameraCards").innerHTML = cameras.map(c => {
+    const features = (c.camera_features || [])
+      .map(f => `<span class="meta-chip">${f.feature_type}</span>`)
+      .join("");
 
     return `
-        <div style="min-width:220px">
-
-          <strong>
-            🦌
-            ${
-                observation.deer_count
-                ||
-                1
-            }
-            deer confirmed
-          </strong>
-
-          <br><br>
-
-          ♂ ${bucks} probable bucks
-
-          <br>
-
-          ♀ ${does} probable does
-
-          <br>
-
-          ${fawns} probable fawns
-
-          <br><br>
-
-          ${
-              observation.acres != null
-              ?
-              observation.acres
-              +
-              " acres"
-              +
-              "<br>"
-              :
-              ""
-          }
-
-          ${money(
-              observation.price
-          )}
-
-          <br><br>
-
-          <strong>
-            ${
-                publicLandText(
-                    observation
-                )
-            }
-          </strong>
-
-          ${
-              observation.listing_url
-              ?
-              `
-              <p>
-                <a
-                  href="${observation.listing_url}"
-                  target="_blank"
-                  rel="noopener"
-                >
-                  View original listing
-                </a>
-              </p>
-              `
-              :
-              ""
-          }
-
+      <div class="stack-item">
+        <div class="stack-item-head">
+          <div>
+            <strong>📷 ${c.name}</strong>
+            <div class="small muted">
+              ${c.primary_habitat || "Habitat not set"}
+              ${c.facing ? ` · Facing ${c.facing}` : ""}
+            </div>
+          </div>
         </div>
+        <div class="meta-row">${features}</div>
+      </div>
     `;
+  }).join("");
 }
 
-
-/* ============================================================
-   RENDER MAP RESULTS
-   ============================================================ */
-
-function renderResults(
-    center
-) {
-
-    const radius =
-        Number(
-            $("radius")
-            .value
-        );
-
-
-    const minimumAcres =
-        Number(
-            $("minAcres")
-            .value
-            ||
-            0
-        );
-
-
-    const rows =
-        observations
-
-        .filter(
-            observation =>
-                observation.confirmed
-                ===
-                true
-                &&
-                Number(
-                    observation.acres
-                    ||
-                    0
-                )
-                >=
-                minimumAcres
-                &&
-                Number.isFinite(
-                    Number(
-                        observation.lat
-                    )
-                )
-                &&
-                Number.isFinite(
-                    Number(
-                        observation.lon
-                    )
-                )
-        )
-
-        .map(
-            observation => ({
-
-                ...observation,
-
-                distance_miles:
-                    miles(
-                        center.lat,
-                        center.lon,
-                        Number(
-                            observation.lat
-                        ),
-                        Number(
-                            observation.lon
-                        )
-                    )
-
-            })
-        )
-
-        .filter(
-            observation =>
-                observation.distance_miles
-                <=
-                radius
-        )
-
-        .sort(
-            (a, b) =>
-                a.distance_miles
-                -
-                b.distance_miles
-        );
-
-
-    layerGroup.clearLayers();
-
-
-    if (searchMarker) {
-
-        map.removeLayer(
-            searchMarker
-        );
-
-    }
-
-
-    if (searchCircle) {
-
-        map.removeLayer(
-            searchCircle
-        );
-
-    }
-
-
-    searchMarker =
-        L.marker(
-            [
-                center.lat,
-                center.lon
-            ]
-        )
-        .addTo(map)
-        .bindPopup(
-            center.label
-        );
-
-
-    searchCircle =
-        L.circle(
-            [
-                center.lat,
-                center.lon
-            ],
-            {
-                radius:
-                    radius
-                    *
-                    1609.344
-            }
-        )
-        .addTo(map);
-
-
-    rows.forEach(
-        observation => {
-
-            L.marker(
-                [
-                    observation.lat,
-                    observation.lon
-                ],
-                {
-                    icon:
-                        deerIcon(
-                            Number(
-                                observation.deer_count
-                                ||
-                                1
-                            )
-                        )
-                }
-            )
-            .addTo(
-                layerGroup
-            )
-            .bindPopup(
-                observationPopup(
-                    observation
-                )
-            );
-
-        }
-    );
-
-
-    map.fitBounds(
-        searchCircle
-            .getBounds(),
-        {
-            padding:
-                [
-                    15,
-                    15
-                ]
-        }
-    );
-
-
-    $("mObs")
-        .textContent =
-            rows.length;
-
-
-    $("mDeer")
-        .textContent =
-            rows.reduce(
-                (
-                    total,
-                    observation
-                ) =>
-                    total
-                    +
-                    Number(
-                        observation.deer_count
-                        ||
-                        1
-                    ),
-                0
-            );
-
-
-    $("mProfiles")
-        .textContent =
-            new Set(
-                rows
-                .map(
-                    observation =>
-                        observation.deer_id
-                )
-                .filter(Boolean)
-            ).size;
-
-
-    $("mHarvested")
-        .textContent =
-            rows.filter(
-                observation =>
-                    [
-                        "reported",
-                        "verified"
-                    ].includes(
-                        observation.harvest_status
-                    )
-            ).length;
-
-
-    $("status")
-        .textContent =
-            rows.length
-            +
-            " confirmed outside observations within "
-            +
-            radius
-            +
-            " miles of "
-            +
-            center.label
-            +
-            ".";
-
-
-    if (!rows.length) {
-
-        $("results")
-            .innerHTML =
-                `
-                <div class="panel">
-                  No confirmed outside deer observations
-                  match this search yet.
-                </div>
-                `;
-
-        return;
-
-    }
-
-
-    $("results")
-        .innerHTML =
-            rows.map(
-                observation => `
-
-                <article class="card">
-
-                  <div class="cardtop">
-
-                    <div>
-
-                      <h3>
-                        🦌
-                        ${
-                            observation.deer_count
-                            ||
-                            1
-                        }
-                        deer confirmed
-                      </h3>
-
-                      <div class="muted">
-
-                        ${
-                            observation.address
-                            ||
-                            observation.city
-                            ||
-                            observation.county
-                            ||
-                            "Listing"
-                        }
-
-                        ${
-                            observation.acres != null
-                            ?
-                            " · "
-                            +
-                            observation.acres
-                            +
-                            " acres"
-                            :
-                            ""
-                        }
-
-                        ·
-                        ${
-                            money(
-                                observation.price
-                            )
-                        }
-
-                      </div>
-
-                    </div>
-
-                    <span class="badge hit">
-
-                      ${
-                          observation
-                          .distance_miles
-                          .toFixed(2)
-                      }
-                      mi away
-
-                    </span>
-
-                  </div>
-
-
-                  <p>
-
-                    ♂
-                    ${
-                        observation.buck_count
-                        ||
-                        0
-                    }
-                    probable bucks
-
-                    ·
-
-                    ♀
-                    ${
-                        observation.doe_count
-                        ||
-                        0
-                    }
-                    probable does
-
-                    ·
-
-                    ${
-                        publicLandText(
-                            observation
-                        )
-                    }
-
-                  </p>
-
-
-                  ${
-                      observation.listing_url
-                      ?
-                      `
-                      <a
-                        href="${observation.listing_url}"
-                        target="_blank"
-                        rel="noopener"
-                      >
-                        View original listing
-                      </a>
-                      `
-                      :
-                      ""
-                  }
-
-                </article>
-                `
-            ).join("");
+function renderDeerProfiles() {
+  if (!deerProfiles.length) {
+    $("deerCards").innerHTML =
+      '<div class="muted">No AI-created deer profiles yet.</div>';
+    return;
+  }
+
+  $("deerCards").innerHTML = deerProfiles.map(d => `
+    <div class="stack-item">
+      <div class="stack-item-head">
+        <div>
+          <strong>🦌 ${d.nickname || d.deer_code || "Unnamed deer"}</strong>
+          <div class="small muted">
+            ${d.sex || "unknown"} · ${d.sighting_count || 0} sightings
+          </div>
+        </div>
+        <button
+          class="secondary mini"
+          type="button"
+          onclick="renameDeer('${d.id}', ${JSON.stringify(d.nickname || "")})"
+        >
+          Rename
+        </button>
+      </div>
+
+      ${
+        d.antler_signature
+          ? `<p class="small">${d.antler_signature}</p>`
+          : ""
+      }
+    </div>
+  `).join("");
 }
 
+function clearPrivateUi() {
+  properties = [];
+  cameras = [];
+  deerProfiles = [];
 
-/* ============================================================
-   SEARCH BUTTON
-   ============================================================ */
+  $("propertySelect").innerHTML =
+    '<option value="">Choose property…</option>';
+
+  $("uploadProperty").innerHTML =
+    '<option value="">Choose property…</option>';
+
+  $("uploadCamera").innerHTML =
+    '<option value="">Choose camera…</option>';
+
+  $("cameraCards").innerHTML = "";
+  $("deerCards").innerHTML = "";
+  $("recentPhotos").innerHTML = "";
+}
+
+/* ------------------------------------------------------------
+   OUTSIDE MAP
+------------------------------------------------------------ */
+
+async function loadJson(path, fallback) {
+  try {
+    const r = await fetch(path, { cache: "no-store" });
+    if (!r.ok) throw new Error();
+    return await r.json();
+  } catch {
+    return fallback;
+  }
+}
+
+function miles(aLat, aLon, bLat, bLon) {
+  const R = 3958.7613;
+  const dLat = rad(bLat - aLat);
+  const dLon = rad(bLon - aLon);
+
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(rad(aLat)) *
+    Math.cos(rad(bLat)) *
+    Math.sin(dLon / 2) ** 2;
+
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+async function geocode(q) {
+  const url =
+    "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=us&q=" +
+    encodeURIComponent(q);
+
+  const r = await fetch(url);
+  const d = await r.json();
+
+  if (!d.length) throw new Error("Location not found.");
+
+  return {
+    lat: Number(d[0].lat),
+    lon: Number(d[0].lon),
+    label: d[0].display_name
+  };
+}
+
+function initMapSafe() {
+  if (typeof L === "undefined") {
+    $("status").textContent = "Map library failed to load.";
+    return;
+  }
+
+  map = L.map("map").setView([32.8, -86.8], 7);
+
+  L.tileLayer(
+    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors"
+    }
+  ).addTo(map);
+
+  layerGroup = L.layerGroup().addTo(map);
+}
+
+function fillControls() {
+  (cfg.radius_options || [1, 3, 5, 10, 15, 25, 50]).forEach(radius => {
+    const o = document.createElement("option");
+    o.value = radius;
+    o.textContent = radius + " miles";
+
+    if (radius === (cfg.default_radius_miles || 5)) {
+      o.selected = true;
+    }
+
+    $("radius").appendChild(o);
+  });
+
+  const groups = {};
+
+  publicLands.forEach(p => {
+    (groups[p.type] ??= []).push(p);
+  });
+
+  Object.keys(groups).sort().forEach(type => {
+    const group = document.createElement("optgroup");
+    group.label = type;
+
+    groups[type]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .forEach(p => {
+        const o = document.createElement("option");
+        o.value = p.id;
+        o.textContent = p.name;
+        group.appendChild(o);
+      });
+
+    $("publicLand").appendChild(group);
+  });
+}
+
+async function resolveSearchPoint() {
+  const landId = $("publicLand").value;
+
+  if (landId) {
+    const land = publicLands.find(x => x.id === landId);
+
+    if (land.lat != null && land.lon != null) {
+      return {
+        lat: Number(land.lat),
+        lon: Number(land.lon),
+        label: land.name
+      };
+    }
+
+    return geocode(land.search_label || land.name + ", Alabama");
+  }
+
+  const q = $("address").value.trim();
+  if (!q) throw new Error("Enter an address/ZIP or select public land.");
+
+  return geocode(q);
+}
+
+function publicLandText(o) {
+  if (
+    o.nearest_public_land &&
+    o.nearest_public_land_distance_miles != null
+  ) {
+    return `${Number(o.nearest_public_land_distance_miles).toFixed(2)} mi to ${o.nearest_public_land}`;
+  }
+
+  return o.nearest_public_land
+    ? `Near ${o.nearest_public_land}`
+    : "Public-land distance not calculated yet";
+}
+
+function deerIcon() {
+  return L.divIcon({
+    className: "",
+    html:
+      '<div style="width:40px;height:40px;border-radius:50%;background:#152019;border:2px solid #a5be86;display:flex;align-items:center;justify-content:center;font-size:23px">🦌</div>',
+    iconSize: [40, 40],
+    iconAnchor: [20, 20]
+  });
+}
+
+function renderMapResults(center) {
+  if (!map || !layerGroup) return;
+
+  const radius = Number($("radius").value);
+  const minAcres = Number($("minAcres").value || 0);
+
+  const rows = observations
+    .filter(o =>
+      o.confirmed === true &&
+      Number(o.acres || 0) >= minAcres &&
+      Number.isFinite(Number(o.lat)) &&
+      Number.isFinite(Number(o.lon))
+    )
+    .map(o => ({
+      ...o,
+      distance_miles: miles(
+        center.lat,
+        center.lon,
+        Number(o.lat),
+        Number(o.lon)
+      )
+    }))
+    .filter(o => o.distance_miles <= radius);
+
+  layerGroup.clearLayers();
+
+  if (searchMarker) map.removeLayer(searchMarker);
+  if (searchCircle) map.removeLayer(searchCircle);
+
+  searchMarker = L.marker([center.lat, center.lon]).addTo(map);
+  searchCircle = L.circle(
+    [center.lat, center.lon],
+    { radius: radius * 1609.344 }
+  ).addTo(map);
+
+  rows.forEach(o => {
+    L.marker([o.lat, o.lon], { icon: deerIcon() })
+      .addTo(layerGroup)
+      .bindPopup(`
+        <b>🦌 ${o.deer_count || 1} deer confirmed</b><br>
+        ♂ ${o.buck_count || 0} bucks · ♀ ${o.doe_count || 0} does<br>
+        ${publicLandText(o)}
+        ${
+          o.listing_url
+            ? `<p><a href="${o.listing_url}" target="_blank" rel="noopener">View original listing</a></p>`
+            : ""
+        }
+      `);
+  });
+
+  map.fitBounds(searchCircle.getBounds());
+
+  $("mObs").textContent = rows.length;
+  $("mDeer").textContent = rows.reduce(
+    (n, o) => n + Number(o.deer_count || 1),
+    0
+  );
+  $("mProfiles").textContent =
+    new Set(rows.map(o => o.deer_id).filter(Boolean)).size;
+  $("mHarvested").textContent =
+    rows.filter(o => ["reported", "verified"].includes(o.harvest_status)).length;
+
+  $("status").textContent =
+    `${rows.length} confirmed observations within ${radius} miles of ${center.label}.`;
+
+  $("results").innerHTML =
+    rows.map(o => `
+      <div class="card">
+        <b>🦌 ${o.deer_count || 1} deer confirmed</b>
+        <p>
+          ♂ ${o.buck_count || 0} bucks ·
+          ♀ ${o.doe_count || 0} does ·
+          ${publicLandText(o)}
+        </p>
+        ${
+          o.listing_url
+            ? `<a href="${o.listing_url}" target="_blank" rel="noopener">View original listing</a>`
+            : ""
+        }
+      </div>
+    `).join("")
+    ||
+    '<div class="panel">No confirmed outside observations match this search.</div>';
+}
 
 async function doSearch() {
+  $("status").textContent = "Resolving location…";
 
-    $("status")
-        .textContent =
-            "Resolving location…";
-
-
-    try {
-
-        const center =
-            await resolveSearch();
-
-
-        renderResults(
-            center
-        );
-
-    } catch (error) {
-
-        $("status")
-            .textContent =
-                error.message;
-
-    }
+  try {
+    renderMapResults(await resolveSearchPoint());
+  } catch (e) {
+    $("status").textContent = e.message;
+  }
 }
 
-
-/* ============================================================
-   SAMPLE TRAIL CAMERA DATA
-   ============================================================ */
-
-const trailData = {
-
-    cameras: [
-
-        {
-
-            id:
-                "camera-north-ridge",
-
-            name:
-                "North Ridge Cam",
-
-            facing:
-                "SW",
-
-            primary_habitat:
-                "Transition / Edge",
-
-            features: [
-                "Heavy trail",
-                "Scrape"
-            ],
-
-            sightings:
-                34,
-
-            bucks:
-                5,
-
-            daylight:
-                29
-        },
-
-
-        {
-
-            id:
-                "camera-creek",
-
-            name:
-                "Creek Crossing",
-
-            facing:
-                "NW",
-
-            primary_habitat:
-                "Creek / Drain",
-
-            features: [
-                "Water / creek",
-                "Heavy trail"
-            ],
-
-            sightings:
-                19,
-
-            bucks:
-                3,
-
-            daylight:
-                42
-        }
-
-    ],
-
-
-    stands: [
-
-        {
-
-            name:
-                "Creek Stand",
-
-            habitat:
-                "Creek / hardwood transition",
-
-            winds: [
-                "NW",
-                "W"
-            ],
-
-            score:
-                78
-        }
-
-    ],
-
-
-    deer: [
-
-        {
-
-            deer_id:
-                "AL-JACKSON-BUCK-0017",
-
-            nickname:
-                "Split G2",
-
-            sightings:
-                23,
-
-            top_habitat:
-                "Transition / Edge",
-
-            top_camera:
-                "North Ridge Cam",
-
-            antler_signature:
-                "Split right G2 with asymmetric right side.",
-
-            harvest_status:
-                "unknown"
-        }
-
-    ],
-
-
-    analytics: {
-
-        photos_analyzed:
-            4283,
-
-        deer_sightings:
-            164,
-
-        identified_bucks:
-            11,
-
-        top_habitat:
-            "Transition / Edge",
-
-        top_camera:
-            "North Ridge Cam",
-
-        top_time:
-            "5:10–6:35 PM",
-
-        top_wind:
-            "NW"
-    },
-
-
-    recommendation: {
-
-        label:
-            "Strong opportunity",
-
-        stand:
-            "Creek Stand",
-
-        target:
-            "Split G2",
-
-        timing:
-            "Next cool NW/W evening",
-
-        score:
-            78,
-
-        reasons: [
-
-            "5 of 7 recent sightings occurred on NW/W winds.",
-
-            "4 recent observations occurred during daylight.",
-
-            "Movement increased during falling temperatures.",
-
-            "Creek Stand is closest to the current movement corridor."
-
-        ]
-    }
-
-};
-
-
-/* ============================================================
-   RENDER TRAIL CAMERA INTELLIGENCE
-   ============================================================ */
-
-function renderTrail() {
-
-    const analytics =
-        trailData.analytics;
-
-
-    $("tcPhotos")
-        .textContent =
-            analytics.photos_analyzed;
-
-
-    $("tcSightings")
-        .textContent =
-            analytics.deer_sightings;
-
-
-    $("tcBucks")
-        .textContent =
-            analytics.identified_bucks;
-
-
-    $("tcCameras")
-        .textContent =
-            trailData.cameras.length;
-
-
-    $("topHabitat")
-        .textContent =
-            analytics.top_habitat;
-
-
-    $("topCamera")
-        .textContent =
-            analytics.top_camera;
-
-
-    $("topTime")
-        .textContent =
-            analytics.top_time;
-
-
-    $("topWind")
-        .textContent =
-            analytics.top_wind;
-
-
-    /* CAMERA DROPDOWN */
-
-    const cameraSelect =
-        $("uploadCamera");
-
-
-    cameraSelect.innerHTML =
-        `
-        <option value="">
-          Choose camera…
-        </option>
-        `;
-
-
-    trailData.cameras.forEach(
-        camera => {
-
-            const option =
-                document.createElement(
-                    "option"
-                );
-
-
-            option.value =
-                camera.id;
-
-
-            option.textContent =
-                camera.name;
-
-
-            cameraSelect
-                .appendChild(
-                    option
-                );
-
-        }
-    );
-
-
-    /* CAMERA CARDS */
-
-    $("cameraCards")
-        .innerHTML =
-            trailData.cameras
-            .map(
-                camera => `
-
-                <div class="stack-item">
-
-                  <div class="stack-item-head">
-
-                    <div>
-
-                      <strong>
-                        📷
-                        ${camera.name}
-                      </strong>
-
-                      <div class="small muted">
-
-                        ${camera.primary_habitat}
-
-                        · Facing
-
-                        ${camera.facing}
-
-                      </div>
-
-                    </div>
-
-
-                    <span class="meta-chip">
-
-                      ${camera.sightings}
-                      sightings
-
-                    </span>
-
-                  </div>
-
-
-                  <div class="meta-row">
-
-                    ${
-                        camera.features
-                        .map(
-                            feature =>
-                                `
-                                <span class="meta-chip">
-                                  ${feature}
-                                </span>
-                                `
-                        )
-                        .join("")
-                    }
-
-
-                    <span class="meta-chip">
-
-                      ${camera.bucks}
-                      bucks
-
-                    </span>
-
-
-                    <span class="meta-chip">
-
-                      ${camera.daylight}%
-                      daylight
-
-                    </span>
-
-                  </div>
-
-                </div>
-                `
-            )
-            .join("");
-
-
-    /* DEER CARDS */
-
-    $("deerCards")
-        .innerHTML =
-            trailData.deer
-            .map(
-                deer => `
-
-                <div class="stack-item">
-
-                  <strong>
-                    🦌
-                    ${
-                        deer.nickname
-                        ||
-                        deer.deer_id
-                    }
-                  </strong>
-
-
-                  <div class="small muted">
-                    ${deer.deer_id}
-                  </div>
-
-
-                  <div class="meta-row">
-
-                    <span class="meta-chip">
-
-                      ${deer.sightings}
-                      sightings
-
-                    </span>
-
-
-                    <span class="meta-chip">
-
-                      ${deer.top_habitat}
-
-                    </span>
-
-
-                    <span class="meta-chip">
-
-                      ${deer.top_camera}
-
-                    </span>
-
-                  </div>
-
-
-                  <p class="small">
-
-                    ${deer.antler_signature}
-
-                  </p>
-
-                </div>
-                `
-            )
-            .join("");
-
-
-    /* STANDS */
-
-    $("standCards")
-        .innerHTML =
-            trailData.stands
-            .map(
-                stand => `
-
-                <div class="stack-item">
-
-                  <strong>
-                    🌲
-                    ${stand.name}
-                  </strong>
-
-
-                  <div class="small muted">
-
-                    ${stand.habitat}
-
-                  </div>
-
-
-                  <div class="meta-row">
-
-                    ${
-                        stand.winds
-                        .map(
-                            wind =>
-                                `
-                                <span class="meta-chip">
-                                  ${wind} wind
-                                </span>
-                                `
-                        )
-                        .join("")
-                    }
-
-
-                    <span class="meta-chip">
-
-                      ${stand.score}/100
-
-                    </span>
-
-                  </div>
-
-                </div>
-                `
-            )
-            .join("");
-
-
-    /* RECOMMENDATION */
-
-    const recommendation =
-        trailData.recommendation;
-
-
-    $("opportunityLabel")
-        .textContent =
-            recommendation.label;
-
-
-    $("huntRecommendation")
-        .className =
-            "recommendation-live";
-
-
-    $("huntRecommendation")
-        .innerHTML =
-            `
-
-            <h4>
-              ${recommendation.stand}
-            </h4>
-
-
-            <p>
-
-              Target:
-
-              <strong>
-                ${recommendation.target}
-              </strong>
-
-              <br>
-
-              Timing:
-
-              <strong>
-                ${recommendation.timing}
-              </strong>
-
-              <br>
-
-              Relative opportunity:
-
-              <strong>
-                ${recommendation.score}/100
-              </strong>
-
-            </p>
-
-
-            <ul>
-
-              ${
-                  recommendation.reasons
-                  .map(
-                      reason =>
-                          `<li>${reason}</li>`
-                  )
-                  .join("")
-              }
-
-            </ul>
-
-
-            <p class="small muted">
-
-              Relative pattern score based on observed
-              movement and conditions. It is not a
-              guaranteed harvest probability.
-
-            </p>
-            `;
-
-}
-
-
-/* ============================================================
-   PHOTO PREVIEW
-   ============================================================ */
-
-function renderPhotoPreviews(
-    files
-) {
-
-    const previewSection =
-        $("photoPreviewSection");
-
-
-    const previewGrid =
-        $("photoPreviewGrid");
-
-
-    previewGrid.innerHTML =
-        "";
-
-
-    if (!files.length) {
-
-        previewSection.style.display =
-            "none";
-
-        return;
-
-    }
-
-
-    previewSection.style.display =
-        "block";
-
-
-    Array
-        .from(files)
-        .slice(
-            0,
-            100
-        )
-        .forEach(
-            file => {
-
-                const reader =
-                    new FileReader();
-
-
-                reader.onload =
-                    event => {
-
-                        const card =
-                            document.createElement(
-                                "div"
-                            );
-
-
-                        card.style.cssText =
-                            `
-                            border:1px solid #334138;
-                            background:#111a14;
-                            border-radius:10px;
-                            padding:5px;
-                            overflow:hidden;
-                            `;
-
-
-                        card.innerHTML =
-                            `
-                            <img
-                              src="${event.target.result}"
-                              alt=""
-                              style="
-                                width:100%;
-                                height:100px;
-                                object-fit:cover;
-                                border-radius:7px;
-                                display:block;
-                              "
-                            >
-
-                            <div
-                              style="
-                                font-size:10px;
-                                color:#a9b6ac;
-                                overflow:hidden;
-                                text-overflow:ellipsis;
-                                white-space:nowrap;
-                                padding:5px 2px 2px;
-                              "
-                              title="${file.name}"
-                            >
-                              ${file.name}
-                            </div>
-                            `;
-
-
-                        previewGrid
-                            .appendChild(
-                                card
-                            );
-
-                    };
-
-
-                reader.readAsDataURL(
-                    file
-                );
-
-            }
-        );
-
-}
-
-
-/* ============================================================
-   TRAIL CAMERA INTERACTIONS
-   ============================================================ */
-
-function setupTrail() {
-
-
-    /* FILE SELECT */
-
-    $("photoUpload")
-        .addEventListener(
-            "change",
-            event => {
-
-                const files =
-                    event.target.files;
-
-
-                $("uploadCount")
-                    .textContent =
-                        files.length
-                        +
-                        (
-                            files.length
-                            ===
-                            1
-                            ?
-                            " file selected"
-                            :
-                            " files selected"
-                        );
-
-
-                renderPhotoPreviews(
-                    files
-                );
-
-
-                $("uploadMessage")
-                    .textContent =
-                        files.length
-                        ?
-                        "Photos selected successfully. Review the thumbnails below."
-                        :
-                        "Select trail-camera photos to begin.";
-
-            }
-        );
-
-
-    /* QUEUE BUTTON */
-
-    $("processUploadBtn")
-        .addEventListener(
-            "click",
-            () => {
-
-                const files =
-                    $("photoUpload")
-                    .files;
-
-
-                const camera =
-                    $("uploadCamera")
-                    .value;
-
-
-                if (!files.length) {
-
-                    $("uploadMessage")
-                        .textContent =
-                            "Select photos first.";
-
-                    return;
-
-                }
-
-
-                if (!camera) {
-
-                    $("uploadMessage")
-                        .textContent =
-                            "Choose which camera these photos came from.";
-
-                    return;
-
-                }
-
-
-                $("uploadMessage")
-                    .textContent =
-                        files.length
-                        +
-                        " photos are ready for private upload and AI analysis. "
-                        +
-                        "The browser preview is working; secure backend upload is the next connection.";
-
-            }
-        );
-
-
-    /* ADD CAMERA */
-
-    $("saveCameraBtn")
-        .addEventListener(
-            "click",
-            () => {
-
-                const name =
-                    $("cameraName")
-                    .value
-                    .trim();
-
-
-                if (!name) {
-
-                    return;
-
-                }
-
-
-                const features =
-                    Array.from(
-                        document.querySelectorAll(
-                            ".habitat-options input:checked"
-                        )
-                    )
-                    .map(
-                        input =>
-                            input.value
-                    );
-
-
-                trailData
-                    .cameras
-                    .push(
-                        {
-
-                            id:
-                                "camera-"
-                                +
-                                Date.now(),
-
-                            name:
-                                name,
-
-                            facing:
-                                $("cameraFacing")
-                                .value,
-
-                            primary_habitat:
-                                $("primaryHabitat")
-                                .value,
-
-                            features:
-                                features,
-
-                            sightings:
-                                0,
-
-                            bucks:
-                                0,
-
-                            daylight:
-                                0
-                        }
-                    );
-
-
-                $("cameraName")
-                    .value =
-                        "";
-
-
-                $("cameraNotes")
-                    .value =
-                        "";
-
-
-                document
-                    .querySelectorAll(
-                        ".habitat-options input"
-                    )
-                    .forEach(
-                        checkbox =>
-                            checkbox.checked
-                            =
-                            false
-                    );
-
-
-                renderTrail();
-
-            }
-        );
-
-
-    /* ADD STAND */
-
-    $("addStandBtn")
-        .addEventListener(
-            "click",
-            () => {
-
-                const name =
-                    prompt(
-                        "Stand name:"
-                    );
-
-
-                if (!name) {
-
-                    return;
-
-                }
-
-
-                trailData
-                    .stands
-                    .push(
-                        {
-
-                            name:
-                                name,
-
-                            habitat:
-                                "Not configured",
-
-                            winds:
-                                [],
-
-                            score:
-                                0
-                        }
-                    );
-
-
-                renderTrail();
-
-            }
-        );
-
-}
-
-
-/* ============================================================
-   INITIALIZATION
-   ============================================================ */
+/* ------------------------------------------------------------
+   INIT
+------------------------------------------------------------ */
 
 async function init() {
+  [cfg, publicLands, observations, outsideProfiles] = await Promise.all([
+    loadJson("config.json", {
+      default_radius_miles: 5,
+      radius_options: [1, 3, 5, 10, 15, 25, 50]
+    }),
+    loadJson("public_lands.json", []),
+    loadJson("observations.json", []),
+    loadJson("deer_profiles.json", [])
+  ]);
 
-    [
-        cfg,
-        publicLands,
-        observations,
-        profiles
-    ]
-    =
-    await Promise.all(
-        [
+  fillControls();
+  initMapSafe();
 
-            loadJson(
-                "config.json",
-                {
-                    default_radius_miles:
-                        5,
+  $("searchBtn").addEventListener("click", doSearch);
 
-                    radius_options:
-                        [
-                            1,
-                            3,
-                            5,
-                            10,
-                            15,
-                            25,
-                            50
-                        ]
-                }
-            ),
+  $("address").addEventListener("keydown", e => {
+    if (e.key === "Enter") doSearch();
+  });
 
+  $("signInBtn").addEventListener("click", signIn);
+  $("signUpBtn").addEventListener("click", signUp);
+  $("signOutBtn").addEventListener("click", signOut);
 
-            loadJson(
-                "public_lands.json",
-                []
-            ),
+  $("addPropertyBtn").addEventListener("click", addProperty);
+  $("addCameraBtn").addEventListener("click", addCamera);
 
+  $("propertySelect").addEventListener("change", () => {
+    $("uploadProperty").value = $("propertySelect").value;
+    renderCameraSelectors();
+    loadRecentPhotos();
+  });
 
-            loadJson(
-                "observations.json",
-                []
-            ),
+  $("uploadProperty").addEventListener("change", () => {
+    renderCameraSelectors();
+    loadRecentPhotos();
+  });
 
+  $("photoUpload").addEventListener("change", e => {
+    const files = e.target.files;
 
-            loadJson(
-                "deer_profiles.json",
-                []
-            )
+    $("uploadCount").textContent =
+      `${files.length} file${files.length === 1 ? "" : "s"} selected`;
 
-        ]
-    );
+    renderSelectedPreviews(files);
+  });
 
+  $("processUploadBtn").addEventListener("click", uploadPhotos);
+  $("refreshPhotosBtn").addEventListener("click", loadRecentPhotos);
 
-    initMap();
-
-
-    fillControls();
-
-
-    $("searchBtn")
-        .addEventListener(
-            "click",
-            doSearch
-        );
-
-
-    $("address")
-        .addEventListener(
-            "keydown",
-            event => {
-
-                if (
-                    event.key
-                    ===
-                    "Enter"
-                ) {
-
-                    doSearch();
-
-                }
-
-            }
-        );
-
-
-    $("publicLand")
-        .addEventListener(
-            "change",
-            () => {
-
-                if (
-                    $("publicLand")
-                    .value
-                ) {
-
-                    $("address")
-                        .value =
-                            "";
-
-                }
-
-            }
-        );
-
-
-    renderTrail();
-
-
-    setupTrail();
-
+  if (initSupabase()) {
+    await restoreSession();
+  }
 }
 
+window.renameDeer = renameDeer;
 
-init();
+document.addEventListener("DOMContentLoaded", init);
