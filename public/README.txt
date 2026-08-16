@@ -1,54 +1,35 @@
-HOSE SUPABASE AUTH + REAL UPLOAD PATCH
+HOSE AUTH-GATED TABS PATCH
 
-PUBLIC HOSE:
-REPLACE:
+REPLACE IN PUBLIC HOSE:
   public/index.html
   public/app.js
   public/styles.css
 
-ADD:
+KEEP:
   public/supabase-config.js
 
-STEP 1 - FILL CONFIG
-Open public/supabase-config.js and paste:
-- Supabase Project URL
-- Publishable key (or legacy anon key)
+BEHAVIOR:
+- Logged out users see ONLY Sign In / Create Account.
+- No real-estate/public-land intelligence is visible before authentication.
+- After sign in:
+    Tab 1 (default): My Deer Intelligence
+    Tab 2: Area Deer Intelligence
 
-Do NOT use a service_role / secret key.
+MY DEER INTELLIGENCE:
+- properties
+- cameras
+- habitat metadata
+- private trail-photo upload
+- recent private photos
+- deer profiles
+- rename deer
 
-STEP 2 - SUPABASE AUTH URL
-In Supabase:
-Authentication -> URL Configuration
+AREA DEER INTELLIGENCE:
+- address/ZIP/public-land search
+- real-estate/listing deer observations
+- public-land distance
+- map
 
-Site URL:
-https://ahose12.github.io/HOSE/
-
-Add Redirect URL:
-https://ahose12.github.io/HOSE/
-
-STEP 3 - DEPLOY
-Commit files and run your GitHub Pages workflow.
-
-WHAT WORKS AFTER THIS PATCH
-- Create account
-- Confirm email (if enabled)
-- Sign in / sign out
-- Create private property
-- Create private camera
-- Add camera habitat features
-- Select photos
-- Upload actual photos to private trail-camera-photos bucket
-- Create trail_photos database row with processing_status=queued
-- Refresh page and view private uploaded photos using signed URLs
-- Load deer_profiles from database
-- Rename deer profiles once AI creates them
-
-NEXT STEP
-Add the server-side Supabase Edge Function / worker that:
-1. claims queued trail_photos
-2. obtains the private image
-3. detects deer
-4. invokes OpenAI for buck/doe/fawn + phenotype analysis
-5. creates sightings
-6. creates or matches deer_profiles
-7. marks photo complete
+IMPORTANT:
+The AI worker is still the next server-side step. Uploaded trail_photos remain
+processing_status='queued' until the Supabase Edge Function / worker is added.
