@@ -1,1 +1,177 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Alabama Deer Intelligence</title><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"></head><body><div class="shell"><h1>Alabama Deer Intelligence</h1><p>Search an address, ZIP, city, coordinates, or Alabama public deer-hunting area and see nearby confirmed deer-photo observations.</p><div class="tabs"><button class="tab active" data-tab="search">Search Intel</button><button class="tab" data-tab="profiles">Deer Profiles</button><button class="tab" data-tab="about">How It Works</button></div><section id="tab-search"><div class="panel"><div class="grid3"><label>Private address / ZIP / city / coordinates<input id="address" placeholder="123 County Rd, Scottsboro, AL or 35611"></label><label>Distance<select id="radius"></select></label><label>Minimum acreage<input id="minAcres" type="number" value="0" min="0" step=".25"></label></div><div class="grid2" style="margin-top:10px"><label>Or Alabama public deer-hunting land<select id="publicLand"><option value="">Choose public land…</option></select></label><div style="align-self:end"><button id="searchBtn" class="primary">Search Deer Intel</button></div></div><p class="small">GitLab Pages uses a geocoded center point for named public land unless you add official polygons. Production distance-to-public-land should use authoritative GIS boundaries.</p></div><div class="metrics"><div class="metric"><b id="mObs">0</b><span>confirmed observations</span></div><div class="metric"><b id="mDeer">0</b><span>visible deer</span></div><div class="metric"><b id="mProfiles">0</b><span>unique deer IDs</span></div><div class="metric"><b id="mHarvested">0</b><span>harvested records</span></div></div><div id="map"></div><div id="status" class="panel small">Enter an address/ZIP or choose public land.</div><div id="results" class="results"></div></section><section id="tab-profiles" class="hidden"><div class="panel"><h2>Historical Deer Profiles</h2><p>Visual re-identification tracks antlers, scars, ear features, markings, body traits, location and time. This is not DNA proof.</p><div class="grid2"><label>Search Deer ID / nickname<input id="profileSearch"></label><label>Harvest status<select id="harvestFilter"><option value="">All</option><option value="unknown">Unknown</option><option value="reported">Reported harvested</option><option value="verified">Verified harvested</option><option value="alive_recent">Recently observed</option></select></label></div></div><div id="profiles" class="profilegrid"></div></section><section id="tab-about" class="hidden"><div class="panel"><h2>Data Rules</h2><p><strong>Confirmed means a visible deer in the actual image.</strong> Listing text alone never creates an observation.</p><p>True positives are stored historically. Photos are only permanently re-hosted when the source license permits it; otherwise retain observation metadata, hashes, embeddings, source URL and listing reference.</p><p>Harvest status is unknown, reported or verified. Never infer harvest because a deer stops appearing.</p></div></section></div><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="app.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HOSE Deer Intelligence</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+</head>
+<body>
+<div class="shell">
+  <div class="hero">
+    <div class="eyebrow">HOSE Deer Intelligence</div>
+    <h1>Search the area. Learn your deer. Hunt smarter.</h1>
+    <p>Search confirmed outside deer intelligence, then manage your own cameras, stands, deer and hunt patterns below.</p>
+  </div>
+
+  <section class="panel">
+    <div class="eyebrow">Area Intelligence</div>
+    <h2>Real Estate + Public Land Deer Map</h2>
+    <div class="searchgrid">
+      <label>Address / ZIP / city / coordinates
+        <input id="address" placeholder="Scottsboro, AL or 35768">
+      </label>
+      <label>Radius
+        <select id="radius"></select>
+      </label>
+      <label>Minimum acreage
+        <input id="minAcres" type="number" min="0" step=".25" value="0">
+      </label>
+    </div>
+    <div class="landgrid">
+      <label>Public deer-hunting land
+        <select id="publicLand"><option value="">Choose public land…</option></select>
+      </label>
+      <button id="searchBtn" class="primary">Search Deer Intel</button>
+    </div>
+  </section>
+
+  <div class="metrics">
+    <div class="metric"><b id="mObs">0</b><span>outside observations</span></div>
+    <div class="metric"><b id="mDeer">0</b><span>visible deer</span></div>
+    <div class="metric"><b id="mProfiles">0</b><span>matched profiles</span></div>
+    <div class="metric"><b id="mHarvested">0</b><span>harvested</span></div>
+  </div>
+
+  <div id="map"></div>
+  <div id="status" class="panel small muted">Enter an address/ZIP or choose public land.</div>
+  <div id="results" class="results"></div>
+
+  <section id="trail-intelligence" class="trail-shell">
+    <div class="section-heading">
+      <div>
+        <div class="eyebrow">My Property Intelligence</div>
+        <h2>Trail Camera Intelligence</h2>
+        <p>Upload trail-camera photos, track individual deer across seasons, add habitat context, compare stands, and build hunt patterns.</p>
+      </div>
+      <span class="private-pill">Private hunter data</span>
+    </div>
+
+    <div class="intel-kpis">
+      <div class="intel-kpi"><span>Photos analyzed</span><strong id="tcPhotos">0</strong></div>
+      <div class="intel-kpi"><span>Deer sightings</span><strong id="tcSightings">0</strong></div>
+      <div class="intel-kpi"><span>Identified bucks</span><strong id="tcBucks">0</strong></div>
+      <div class="intel-kpi"><span>Active cameras</span><strong id="tcCameras">0</strong></div>
+    </div>
+
+    <div class="trail-grid two">
+      <article class="intel-card">
+        <div class="eyebrow">1. Import</div>
+        <h3>Upload Trail-Camera Photos</h3>
+        <label>Camera
+          <select id="uploadCamera"><option value="">Choose camera…</option></select>
+        </label>
+        <div class="dropzone">
+          <input id="photoUpload" type="file" accept="image/*" multiple>
+          <div class="drop-icon">📷</div>
+          <strong>Select photos from SD card / phone</strong>
+          <span>Browser-based upload. No desktop sender required.</span>
+        </div>
+        <div class="upload-summary">
+          <span id="uploadCount">0 files selected</span>
+          <button id="processUploadBtn" class="primary">Queue for Analysis</button>
+        </div>
+        <div id="uploadMessage" class="small muted">UI is ready. Private storage/API wiring is the next backend step.</div>
+      </article>
+
+      <article class="intel-card">
+        <div class="eyebrow">2. Context</div>
+        <h3>Camera Setup + Habitat</h3>
+        <div class="form-grid">
+          <label>Camera name
+            <input id="cameraName" placeholder="North Ridge Cam">
+          </label>
+          <label>Facing
+            <select id="cameraFacing">
+              <option>N</option><option>NE</option><option>E</option><option>SE</option>
+              <option>S</option><option>SW</option><option>W</option><option>NW</option>
+            </select>
+          </label>
+        </div>
+        <label>Primary habitat
+          <select id="primaryHabitat">
+            <option>Field / Food Plot</option><option>Scrape</option><option>Rub Line</option>
+            <option>Trail / Travel Corridor</option><option>Ridge</option><option>Hardwoods</option>
+            <option>Pines</option><option>Transition / Edge</option><option>Bedding Area</option>
+            <option>Water Source</option><option>Creek / Drain</option><option>Agricultural Field</option>
+            <option>Human / Structural</option><option>Road / Access</option><option>Other</option>
+          </select>
+        </label>
+        <div class="habitat-options">
+          <label><input type="checkbox" value="Scrape"> Scrape</label>
+          <label><input type="checkbox" value="Rub line"> Rub line</label>
+          <label><input type="checkbox" value="Heavy trail"> Heavy trail</label>
+          <label><input type="checkbox" value="Transition edge"> Transition edge</label>
+          <label><input type="checkbox" value="Bedding nearby"> Bedding nearby</label>
+          <label><input type="checkbox" value="Water / creek"> Water / creek</label>
+          <label><input type="checkbox" value="Food source"> Food source</label>
+          <label><input type="checkbox" value="Human / structure"> Human / structure</label>
+        </div>
+        <label>Notes
+          <textarea id="cameraNotes" rows="3" placeholder="Camera points down trail entering food plot..."></textarea>
+        </label>
+        <button id="saveCameraBtn" class="secondary">Add Camera</button>
+      </article>
+    </div>
+
+    <div class="trail-grid two">
+      <article class="intel-card">
+        <div class="eyebrow">Camera Network</div>
+        <h3>My Cameras</h3>
+        <div id="cameraCards" class="stack-list"></div>
+      </article>
+      <article class="intel-card">
+        <div class="eyebrow">Individual Deer</div>
+        <h3>Deer Profiles</h3>
+        <div id="deerCards" class="stack-list"></div>
+      </article>
+    </div>
+
+    <div class="trail-grid two">
+      <article class="intel-card">
+        <div class="card-heading">
+          <div><div class="eyebrow">Hunt Setup</div><h3>Stands</h3></div>
+          <button id="addStandBtn" class="secondary">+ Add stand</button>
+        </div>
+        <div id="standCards" class="stack-list"></div>
+      </article>
+
+      <article class="intel-card recommendation-card">
+        <div class="card-heading">
+          <div><div class="eyebrow">Hunt Intelligence</div><h3>Best Current Opportunity</h3></div>
+          <span id="opportunityLabel" class="opportunity-badge">Waiting for data</span>
+        </div>
+        <div id="huntRecommendation" class="recommendation-empty">
+          Upload observations and add stands to generate a relative hunt-opportunity recommendation.
+        </div>
+      </article>
+    </div>
+
+    <article class="intel-card">
+      <div class="eyebrow">Pattern Analysis</div>
+      <h3>Movement + Habitat Summary</h3>
+      <div class="analytics-grid">
+        <div><span>Top habitat</span><strong id="topHabitat">—</strong></div>
+        <div><span>Most active camera</span><strong id="topCamera">—</strong></div>
+        <div><span>Top sighting window</span><strong id="topTime">—</strong></div>
+        <div><span>Most common wind</span><strong id="topWind">—</strong></div>
+      </div>
+    </article>
+  </section>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
