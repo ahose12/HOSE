@@ -3020,6 +3020,7 @@ function setupTabs() {
               moveSetupToAreaIntelligence();
               ensureStandMetadataControls();
               cleanupTabRoles();
+              ensureAreaPropertyViewToggle();
 
               initAreaMap();
 
@@ -7722,7 +7723,165 @@ async function buildTargetHuntPlan() {
    PRIVATE AREA INTELLIGENCE
    ============================================================ */
 
+
+let areaMapFitRequested =
+  false;
+
+
+function areaShowsAllProperties() {
+  const selected =
+    document.querySelector(
+      'input[name="areaPropertyView"]:checked'
+    );
+
+  if (selected) {
+    return (
+      selected.value ===
+      "all"
+    );
+  }
+
+  return (
+    localStorage.getItem(
+      "hose_area_view_mode"
+    )
+    ===
+    "all"
+  );
+}
+
+
+function ensureAreaPropertyViewToggle() {
+  const propertySelect =
+    $("mapProperty");
+
+  if (
+    !propertySelect ||
+    $("areaPropertyViewToggle")
+  ) {
+    return;
+  }
+
+  const selectedMode =
+    localStorage.getItem(
+      "hose_area_view_mode"
+    )
+    ||
+    "selected";
+
+  const wrap =
+    document.createElement(
+      "div"
+    );
+
+  wrap.id =
+    "areaPropertyViewToggle";
+
+  wrap.className =
+    "area-property-view-toggle";
+
+  wrap.innerHTML = `
+    <span class="area-view-label">
+      Map view
+    </span>
+
+    <label class="area-view-option">
+      <input
+        type="radio"
+        name="areaPropertyView"
+        value="selected"
+        ${selectedMode !== "all" ? "checked" : ""}
+      >
+      <span>
+        Selected Property
+      </span>
+    </label>
+
+    <label class="area-view-option">
+      <input
+        type="radio"
+        name="areaPropertyView"
+        value="all"
+        ${selectedMode === "all" ? "checked" : ""}
+      >
+      <span>
+        All My Properties
+      </span>
+    </label>
+  `;
+
+  /*
+   * Put the radio control beside/above the existing Property selector
+   * without replacing the selector. The dropdown still chooses which
+   * property you are editing/placing cameras and stands on.
+   */
+  const propertyField =
+    propertySelect.parentElement;
+
+  if (propertyField) {
+    propertyField.insertAdjacentElement(
+      "afterend",
+      wrap
+    );
+  } else {
+    propertySelect.insertAdjacentElement(
+      "beforebegin",
+      wrap
+    );
+  }
+
+  wrap
+    .querySelectorAll(
+      'input[name="areaPropertyView"]'
+    )
+    .forEach(
+      radio => {
+        radio.addEventListener(
+          "change",
+          () => {
+            localStorage.setItem(
+              "hose_area_view_mode",
+              radio.value
+            );
+
+            areaMapFitRequested =
+              radio.value ===
+              "all";
+
+            syncAreaSelectors();
+            renderAreaMap();
+
+            requestAnimationFrame(
+              () =>
+                areaMap?.invalidateSize({
+                  pan: false
+                })
+            );
+          }
+        );
+      }
+    );
+}
+
+
+function propertyNameForId(
+  propertyId
+) {
+  return (
+    properties.find(
+      property =>
+        property.id ===
+        propertyId
+    )?.name
+    ||
+    "Unknown property"
+  );
+}
+
+
 function initAreaMap() {
+  ensureAreaPropertyViewToggle();
+
   if (areaMap || typeof L === "undefined" || !$("areaMap")) return;
 
   areaMap = L.map("areaMap", {
@@ -7771,122 +7930,273 @@ function initAreaMap() {
 }
 
 function syncAreaSelectors() {
-  if (!$("mapProperty")) return;
+  if (
+    !$("mapProperty")
+  ) {
+    return;
+  }
+
+  ensureAreaPropertyViewToggle();
+
+  const showAll =
+    areaShowsAllProperties();
 
   const savedProperty =
-    $("mapProperty").value ||
-    localStorage.getItem("hose_area_property_id") ||
+    $("mapProperty").value
+    ||
+    localStorage.getItem(
+      "hose_area_property_id"
+    )
+    ||
     "";
 
   $("mapProperty").innerHTML =
-    '<option value="">Choose property…</option>' +
+    '<option value="">Choose property…</option>'
+    +
     properties
-      .map(p => `<option value="${p.id}">${p.name}</option>`)
+      .map(
+        property =>
+          `<option value="${property.id}">${escapeHtml(property.name)}</option>`
+      )
       .join("");
 
-  if (properties.some(p => p.id === savedProperty)) {
-    $("mapProperty").value = savedProperty;
-  } else if (properties.length === 1) {
-    $("mapProperty").value = properties[0].id;
+  if (
+    properties.some(
+      property =>
+        property.id ===
+        savedProperty
+    )
+  ) {
+    $("mapProperty").value =
+      savedProperty;
+  } else if (
+    properties.length === 1
+  ) {
+    $("mapProperty").value =
+      properties[0].id;
   }
 
-  const propertyId = $("mapProperty").value;
+  const propertyId =
+    $("mapProperty").value;
 
   if (propertyId) {
-    localStorage.setItem("hose_area_property_id", propertyId);
+    localStorage.setItem(
+      "hose_area_property_id",
+      propertyId
+    );
   }
 
+  /*
+   * Camera and stand placement selectors remain scoped to the selected
+   * property. The radio changes MAP VISIBILITY, not which property a newly
+   * placed camera/stand belongs to.
+   */
   const cams =
     propertyId
-      ? cameras.filter(c => c.property_id === propertyId)
+      ? cameras.filter(
+          camera =>
+            camera.property_id ===
+            propertyId
+        )
       : [];
 
   const propertyStands =
     propertyId
-      ? stands.filter(s => s.property_id === propertyId)
+      ? stands.filter(
+          stand =>
+            stand.property_id ===
+            propertyId
+        )
       : [];
 
+  /*
+   * In All My Properties view, identified deer can be selected across the
+   * whole account so cross-property movement can be visualized.
+   */
   const deer =
-    propertyId
-      ? deerProfiles.filter(d => d.property_id === propertyId)
-      : [];
+    showAll
+      ? deerProfiles
+      : propertyId
+        ? deerProfiles.filter(
+            row =>
+              row.property_id ===
+              propertyId
+          )
+        : [];
 
-  const oldCamera = $("mapCamera").value;
-  const oldStand = $("mapStand").value;
-  const oldDeer = $("mapDeer").value;
+  const oldCamera =
+    $("mapCamera").value;
+
+  const oldStand =
+    $("mapStand").value;
+
+  const oldDeer =
+    $("mapDeer").value;
 
   $("mapCamera").innerHTML =
-    '<option value="">Choose camera…</option>' +
+    '<option value="">Choose camera…</option>'
+    +
     cams
-      .map(c => `<option value="${c.id}">${c.name}</option>`)
+      .map(
+        camera =>
+          `<option value="${camera.id}">${escapeHtml(camera.name)}</option>`
+      )
       .join("");
 
   $("mapStand").innerHTML =
-    '<option value="">Choose stand…</option>' +
+    '<option value="">Choose stand…</option>'
+    +
     propertyStands
-      .map(s => `<option value="${s.id}">${s.name}</option>`)
+      .map(
+        stand =>
+          `<option value="${stand.id}">${escapeHtml(stand.name)}</option>`
+      )
       .join("");
 
   $("mapDeer").innerHTML =
-    '<option value="">All deer / no movement line</option>' +
+    '<option value="">All deer / no movement line</option>'
+    +
     deer
-      .map(d => `<option value="${d.id}">${d.nickname || d.deer_code || "Unnamed deer"}</option>`)
+      .map(
+        row => {
+          const propertyName =
+            showAll
+              ? ` · ${propertyNameForId(row.property_id)}`
+              : "";
+
+          return (
+            `<option value="${row.id}">${escapeHtml(row.nickname || row.deer_code || "Unnamed deer")}${escapeHtml(propertyName)}</option>`
+          );
+        }
+      )
       .join("");
 
-  if (cams.some(c => c.id === oldCamera)) {
-    $("mapCamera").value = oldCamera;
+  if (
+    cams.some(
+      camera =>
+        camera.id ===
+        oldCamera
+    )
+  ) {
+    $("mapCamera").value =
+      oldCamera;
   }
 
-  if (propertyStands.some(s => s.id === oldStand)) {
-    $("mapStand").value = oldStand;
+  if (
+    propertyStands.some(
+      stand =>
+        stand.id ===
+        oldStand
+    )
+  ) {
+    $("mapStand").value =
+      oldStand;
   }
 
-  if (deer.some(d => d.id === oldDeer)) {
-    $("mapDeer").value = oldDeer;
+  if (
+    deer.some(
+      row =>
+        row.id ===
+        oldDeer
+    )
+  ) {
+    $("mapDeer").value =
+      oldDeer;
   }
 
   const selectedProperty =
-    properties.find(p => p.id === propertyId);
+    properties.find(
+      property =>
+        property.id ===
+        propertyId
+    );
 
   const propertyLocated =
-    selectedProperty &&
-    Number.isFinite(Number(selectedProperty.lat)) &&
-    Number.isFinite(Number(selectedProperty.lon));
+    selectedProperty
+    &&
+    Number.isFinite(
+      Number(
+        selectedProperty.lat
+      )
+    )
+    &&
+    Number.isFinite(
+      Number(
+        selectedProperty.lon
+      )
+    );
 
-  if ($("propertyLocationStatus")) {
-    if (!selectedProperty) {
+  if (
+    $("propertyLocationStatus")
+  ) {
+    if (showAll) {
+      const mappedProperties =
+        properties.filter(
+          property =>
+            Number.isFinite(
+              Number(property.lat)
+            )
+            &&
+            Number.isFinite(
+              Number(property.lon)
+            )
+        );
+
+      $("propertyLocationStatus").textContent =
+        `🗺️ Showing ${mappedProperties.length} mapped propert${mappedProperties.length === 1 ? "y" : "ies"} together. The Property dropdown still controls which property you edit or add points to.`;
+
+    } else if (
+      !selectedProperty
+    ) {
       $("propertyLocationStatus").textContent =
         "Choose a property, then set its approximate center on the map.";
-    } else if (!propertyLocated) {
+
+    } else if (
+      !propertyLocated
+    ) {
       $("propertyLocationStatus").textContent =
         `${selectedProperty.name} has not been located yet. Click Set Property Location, then click the farm on the map.`;
+
     } else {
       $("propertyLocationStatus").textContent =
         `📍 ${selectedProperty.name} location saved. Cameras and stands can now be placed relative to this farm.`;
     }
   }
 
-  if ($("placementMessage")) {
-    if (!propertyId) {
+  if (
+    $("placementMessage")
+  ) {
+    if (
+      !propertyId
+    ) {
       $("placementMessage").textContent =
-        "Choose a property first.";
-    } else if (!propertyLocated) {
+        showAll
+          ? "All mapped properties are visible. Choose a property from the dropdown before adding or placing a camera/stand."
+          : "Choose a property first.";
+
+    } else if (
+      !propertyLocated
+    ) {
       $("placementMessage").textContent =
-        "Set this property's location before placing cameras or stands.";
-    } else if (!cams.length) {
+        "Set the selected property's location before placing cameras or stands.";
+
+    } else if (
+      !cams.length
+    ) {
       $("placementMessage").textContent =
-        "Property located. No cameras are saved for this property yet.";
+        showAll
+          ? `Viewing all properties. ${selectedProperty.name} is selected for editing and has no saved cameras yet.`
+          : "Property located. No cameras are saved for this property yet.";
+
     } else {
       $("placementMessage").textContent =
-        `${cams.length} camera${cams.length === 1 ? "" : "s"} loaded. Choose one and click Place Camera.`;
+        showAll
+          ? `Viewing all properties. ${selectedProperty.name} is selected for editing; ${cams.length} of its camera${cams.length === 1 ? "" : "s"} loaded in the placement selector.`
+          : `${cams.length} camera${cams.length === 1 ? "" : "s"} loaded. Choose one and click Place Camera.`;
     }
   }
-
-  /*
-   * Selecting a saved property must never take ownership of map navigation.
-   * Selector syncing only updates controls and metadata.
-   */
 }
+
 
 function propertyMapIcon() {
   return L.divIcon({
@@ -7928,102 +8238,379 @@ function cameraStats(cameraId) {
 }
 
 function renderAreaMap() {
-  if (!areaMap || !areaLayer || !$("mapProperty")) return;
+  if (
+    !areaMap ||
+    !areaLayer ||
+    !$("mapProperty")
+  ) {
+    return;
+  }
+
+  ensureAreaPropertyViewToggle();
 
   areaLayer.clearLayers();
   movementLayer.clearLayers();
 
-  const propertyId = $("mapProperty").value;
-  if (!propertyId) return;
+  const showAll =
+    areaShowsAllProperties();
 
-  const cams = cameras.filter(c => c.property_id === propertyId);
-  const propertyStands = stands.filter(s => s.property_id === propertyId);
-  const selectedProperty = properties.find(p => p.id === propertyId);
-  const bounds = [];
+  const propertyId =
+    $("mapProperty").value;
 
   if (
-    selectedProperty &&
-    Number.isFinite(Number(selectedProperty.lat)) &&
-    Number.isFinite(Number(selectedProperty.lon))
+    !showAll &&
+    !propertyId
   ) {
-    const propertyLat = Number(selectedProperty.lat);
-    const propertyLon = Number(selectedProperty.lon);
-
-    L.marker(
-      [propertyLat, propertyLon],
-      {
-        icon: propertyMapIcon(),
-        draggable: false,
-        zIndexOffset: -100
-      }
-    )
-      .addTo(areaLayer)
-      .bindPopup(
-        `<b>📍 ${selectedProperty.name}</b><br>Approximate property center`
-      );
-
-    bounds.push([propertyLat, propertyLon]);
+    return;
   }
 
-  cams.filter(c => Number.isFinite(Number(c.lat)) && Number.isFinite(Number(c.lon))).forEach(c => {
-    const stats = cameraStats(c.id);
-    const marker = L.marker([Number(c.lat), Number(c.lon)], {
-      icon: cameraMapIcon(),
-      draggable: true
-    }).addTo(areaLayer);
+  const visibleProperties =
+    showAll
+      ? properties
+      : properties.filter(
+          property =>
+            property.id ===
+            propertyId
+        );
 
-    marker.bindPopup(`
-      <b>📷 ${c.name}</b><br>
-      ${c.primary_habitat || "Habitat not set"}${c.facing ? ` · Facing ${c.facing}` : ""}<br><br>
-      ${stats.sightings} sighting records<br>
-      🦌 ${stats.deer} deer · ♂ ${stats.bucks} bucks · ♀ ${stats.does} does<br>
-      ${stats.profiles} identified deer profiles
-    `);
+  const cams =
+    showAll
+      ? cameras
+      : cameras.filter(
+          camera =>
+            camera.property_id ===
+            propertyId
+        );
 
-    marker.on("dragend", async e => {
-      const p = e.target.getLatLng();
-      await saveCameraLocation(c.id, p.lat, p.lng);
-    });
+  const propertyStands =
+    showAll
+      ? stands
+      : stands.filter(
+          stand =>
+            stand.property_id ===
+            propertyId
+        );
 
-    bounds.push([Number(c.lat), Number(c.lon)]);
-  });
+  const visiblePropertyIds =
+    new Set(
+      visibleProperties.map(
+        property =>
+          property.id
+      )
+    );
 
-  propertyStands.filter(s => Number.isFinite(Number(s.lat)) && Number.isFinite(Number(s.lon))).forEach(s => {
-    const marker = L.marker([Number(s.lat), Number(s.lon)], {
-      icon: standMapIcon(),
-      draggable: true
-    }).addTo(areaLayer);
+  const visibleSightings =
+    showAll
+      ? sightings.filter(
+          sighting =>
+            !sighting.property_id
+            ||
+            visiblePropertyIds.has(
+              sighting.property_id
+            )
+        )
+      : sightings.filter(
+          sighting =>
+            sighting.property_id ===
+            propertyId
+        );
 
-    marker.bindPopup(`
-      <b>🌲 ${s.name}</b>
-      <br>${standTypeLabel(s.stand_type)}
-      ${s.facing_direction ? `<br>Facing ${s.facing_direction}` : ""}
-      ${s.height_ft != null ? `<br>${s.height_ft} ft` : ""}
-      <br>${s.primary_habitat || "Habitat not set"}
-      ${s.access_notes ? `<br><small>${s.access_notes}</small>` : ""}
-    `);
-    marker.on("dragend", async e => {
-      const p = e.target.getLatLng();
-      await saveStandLocation(s.id, p.lat, p.lng);
-    });
+  const bounds =
+    [];
 
-    bounds.push([Number(s.lat), Number(s.lon)]);
-  });
+  visibleProperties
+    .filter(
+      property =>
+        Number.isFinite(
+          Number(property.lat)
+        )
+        &&
+        Number.isFinite(
+          Number(property.lon)
+        )
+    )
+    .forEach(
+      property => {
+        const lat =
+          Number(
+            property.lat
+          );
+
+        const lon =
+          Number(
+            property.lon
+          );
+
+        L.marker(
+          [lat, lon],
+          {
+            icon:
+              propertyMapIcon(),
+
+            draggable:
+              false,
+
+            zIndexOffset:
+              -100
+          }
+        )
+          .addTo(
+            areaLayer
+          )
+          .bindPopup(
+            `<b>📍 ${escapeHtml(property.name)}</b><br>Approximate property center`
+          );
+
+        bounds.push(
+          [lat, lon]
+        );
+      }
+    );
+
+
+  cams
+    .filter(
+      camera =>
+        Number.isFinite(
+          Number(camera.lat)
+        )
+        &&
+        Number.isFinite(
+          Number(camera.lon)
+        )
+    )
+    .forEach(
+      camera => {
+        const stats =
+          cameraStats(
+            camera.id
+          );
+
+        const propertyName =
+          propertyNameForId(
+            camera.property_id
+          );
+
+        const marker =
+          L.marker(
+            [
+              Number(camera.lat),
+              Number(camera.lon)
+            ],
+            {
+              icon:
+                cameraMapIcon(),
+
+              draggable:
+                true
+            }
+          )
+          .addTo(
+            areaLayer
+          );
+
+        marker.bindPopup(`
+          <b>📷 ${escapeHtml(camera.name)}</b>
+          ${showAll ? `<br><strong>${escapeHtml(propertyName)}</strong>` : ""}
+          <br>
+          ${escapeHtml(camera.primary_habitat || "Habitat not set")}
+          ${camera.facing ? ` · Facing ${escapeHtml(camera.facing)}` : ""}
+          <br><br>
+          ${stats.sightings} sighting records
+          <br>
+          🦌 ${stats.deer} deer · ♂ ${stats.bucks} bucks · ♀ ${stats.does} does
+          <br>
+          ${stats.profiles} identified deer profiles
+        `);
+
+        marker.on(
+          "dragend",
+          async event => {
+            const point =
+              event.target
+                .getLatLng();
+
+            await saveCameraLocation(
+              camera.id,
+              point.lat,
+              point.lng
+            );
+          }
+        );
+
+        bounds.push(
+          [
+            Number(camera.lat),
+            Number(camera.lon)
+          ]
+        );
+      }
+    );
+
+
+  propertyStands
+    .filter(
+      stand =>
+        Number.isFinite(
+          Number(stand.lat)
+        )
+        &&
+        Number.isFinite(
+          Number(stand.lon)
+        )
+    )
+    .forEach(
+      stand => {
+        const propertyName =
+          propertyNameForId(
+            stand.property_id
+          );
+
+        const marker =
+          L.marker(
+            [
+              Number(stand.lat),
+              Number(stand.lon)
+            ],
+            {
+              icon:
+                standMapIcon(),
+
+              draggable:
+                true
+            }
+          )
+          .addTo(
+            areaLayer
+          );
+
+        marker.bindPopup(`
+          <b>🌲 ${escapeHtml(stand.name)}</b>
+          ${showAll ? `<br><strong>${escapeHtml(propertyName)}</strong>` : ""}
+          <br>${escapeHtml(standTypeLabel(stand.stand_type))}
+          ${stand.facing_direction ? `<br>Facing ${escapeHtml(stand.facing_direction)}` : ""}
+          ${stand.height_ft != null ? `<br>${stand.height_ft} ft` : ""}
+          <br>${escapeHtml(stand.primary_habitat || "Habitat not set")}
+          ${stand.access_notes ? `<br><small>${escapeHtml(stand.access_notes)}</small>` : ""}
+        `);
+
+        marker.on(
+          "dragend",
+          async event => {
+            const point =
+              event.target
+                .getLatLng();
+
+            await saveStandLocation(
+              stand.id,
+              point.lat,
+              point.lng
+            );
+          }
+        );
+
+        bounds.push(
+          [
+            Number(stand.lat),
+            Number(stand.lon)
+          ]
+        );
+      }
+    );
+
+
+  if (
+    $("areaCameraCount")
+  ) {
+    $("areaCameraCount").textContent =
+      cams.filter(
+        camera =>
+          camera.lat != null
+          &&
+          camera.lon != null
+      ).length;
+  }
+
+  if (
+    $("areaStandCount")
+  ) {
+    $("areaStandCount").textContent =
+      propertyStands.filter(
+        stand =>
+          stand.lat != null
+          &&
+          stand.lon != null
+      ).length;
+  }
+
+  if (
+    $("areaSightingCount")
+  ) {
+    $("areaSightingCount").textContent =
+      visibleSightings.length;
+  }
+
+  if (
+    $("areaBuckCount")
+  ) {
+    $("areaBuckCount").textContent =
+      visibleSightings.reduce(
+        (total, sighting) =>
+          total
+          +
+          Number(
+            sighting.buck_count
+            ||
+            0
+          ),
+        0
+      );
+  }
 
   /*
-   * Redrawing property/camera/stand markers must not move the map.
-   * The hunter keeps control of the current center and zoom.
+   * When the hunter explicitly switches to All My Properties, fit every
+   * mapped property/camera/stand on screen once. Normal re-renders do not
+   * continually steal map navigation from the hunter.
    */
+  if (
+    showAll
+    &&
+    areaMapFitRequested
+    &&
+    bounds.length
+  ) {
+    areaMapFitRequested =
+      false;
 
-  const propertySightings = sightings.filter(s => s.property_id === propertyId);
-  $("areaCameraCount").textContent = cams.filter(c => c.lat != null && c.lon != null).length;
-  $("areaStandCount").textContent = propertyStands.filter(s => s.lat != null && s.lon != null).length;
-  $("areaSightingCount").textContent = propertySightings.length;
-  $("areaBuckCount").textContent = propertySightings.reduce((n,s) => n + Number(s.buck_count || 0), 0);
+    if (
+      bounds.length === 1
+    ) {
+      areaMap.setView(
+        bounds[0],
+        16
+      );
+    } else {
+      areaMap.fitBounds(
+        bounds,
+        {
+          padding:
+            [45, 45],
 
+          maxZoom:
+            17
+        }
+      );
+    }
+  }
+
+  /*
+   * Camera Activity / Pattern presentation may be hidden on Area
+   * Intelligence, but these calls remain safe for other dependent logic.
+   */
   renderCameraActivity();
   renderMovementLine();
 }
+
 
 async function savePropertyLocation(id, lat, lon) {
   const {
@@ -8355,10 +8942,42 @@ function renderMovementLine() {
     return;
   }
 
-  const deer = deerProfiles.find(d => d.id === deerId);
-  const rows = sightings
-    .filter(s => s.property_id === propertyId && s.deer_profile_id === deerId)
-    .sort((a,b) => new Date(a.captured_at || 0) - new Date(b.captured_at || 0));
+  const deer =
+    deerProfiles.find(
+      row =>
+        row.id ===
+        deerId
+    );
+
+  const showAll =
+    areaShowsAllProperties();
+
+  const rows =
+    sightings
+      .filter(
+        sighting =>
+          sighting.deer_profile_id ===
+          deerId
+          &&
+          (
+            showAll
+            ||
+            sighting.property_id ===
+            propertyId
+          )
+      )
+      .sort(
+        (a,b) =>
+          new Date(
+            a.captured_at
+            || 0
+          )
+          -
+          new Date(
+            b.captured_at
+            || 0
+          )
+      );
 
   const points = rows.map(s => {
     const camera = cameras.find(c => c.id === s.camera_id);
@@ -8381,7 +9000,20 @@ function renderMovementLine() {
   points.forEach((p,i) => {
     L.circleMarker([p.lat,p.lon], { radius: 7, weight: 2, fillOpacity: .8 })
       .addTo(movementLayer)
-      .bindPopup(`<b>${i+1}. ${p.camera.name}</b><br>${p.sighting.captured_at ? new Date(p.sighting.captured_at).toLocaleString() : "Time unavailable"}`);
+      .bindPopup(`
+        <b>${i+1}. ${escapeHtml(p.camera.name)}</b>
+        ${
+          showAll
+            ? `<br>${escapeHtml(propertyNameForId(p.camera.property_id))}`
+            : ""
+        }
+        <br>
+        ${
+          p.sighting.captured_at
+            ? new Date(p.sighting.captured_at).toLocaleString()
+            : "Time unavailable"
+        }
+      `);
   });
 
   const counts = {};
@@ -9002,6 +9634,7 @@ async function init() {
     makeDeerProfilePrimary();
     moveSetupToAreaIntelligence();
     cleanupTabRoles();
+    ensureAreaPropertyViewToggle();
     ensureStandMetadataControls();
 
     [

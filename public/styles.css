@@ -2536,3 +2536,51 @@ a{
   display: none !important;
 }
 
+
+
+/* ============================================================
+   AREA INTELLIGENCE — PROPERTY VIEW RADIO
+   ============================================================ */
+
+.area-property-view-toggle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  min-height: 44px;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255,255,255,.025);
+}
+
+.area-view-label {
+  font-size: .72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  opacity: .7;
+}
+
+.area-view-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.area-view-option input[type="radio"] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: #ff7a00;
+}
+
+@media(max-width: 560px) {
+  .area-property-view-toggle {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
