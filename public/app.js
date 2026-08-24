@@ -87,6 +87,7 @@ let placementMode = null;
 
 let pendingPhotoMetadata = new Map();
 let targetForecastCache = new Map();
+let deerProfilePhotoUrls = new Map();
 
 
 /* ============================================================
@@ -646,6 +647,68 @@ async function loadDeerProfiles() {
   }
 
   deerProfiles = data || [];
+  await loadDeerProfilePhotos();
+}
+
+
+async function loadDeerProfilePhotos() {
+  deerProfilePhotoUrls.clear();
+
+  const profileRows =
+    deerProfiles.filter(
+      deer =>
+        deer.representative_photo_id
+    );
+
+  await Promise.all(
+    profileRows.map(
+      async deer => {
+        try {
+          const {
+            data: photo
+          } =
+            await sb
+              .from("trail_photos")
+              .select("storage_path")
+              .eq(
+                "id",
+                deer.representative_photo_id
+              )
+              .eq(
+                "user_id",
+                currentUser.id
+              )
+              .maybeSingle();
+
+          if (!photo?.storage_path) {
+            return;
+          }
+
+          const {
+            data: signed
+          } =
+            await sb.storage
+              .from("trail-camera-photos")
+              .createSignedUrl(
+                photo.storage_path,
+                3600
+              );
+
+          if (signed?.signedUrl) {
+            deerProfilePhotoUrls.set(
+              deer.id,
+              signed.signedUrl
+            );
+          }
+        } catch (error) {
+          console.warn(
+            "Could not load deer profile image:",
+            error
+          );
+        }
+      }
+    )
+  );
 }
 
 
@@ -906,6 +969,46 @@ function safeFileName(name) {
 }
 
 
+async function sha256File(file) {
+  const buffer =
+    await file.arrayBuffer();
+
+  const digest =
+    await crypto.subtle.digest(
+      "SHA-256",
+      buffer
+    );
+
+  return Array.from(
+    new Uint8Array(digest)
+  )
+    .map(
+      byte =>
+        byte
+          .toString(16)
+          .padStart(2, "0")
+    )
+    .join("");
+}
+
+
+function knownDeerOptions(propertyId) {
+  return deerProfiles
+    .filter(
+      deer =>
+        deer.property_id === propertyId
+    )
+    .map(
+      deer => `
+        <option value="${deer.id}">
+          ${escapeHtml(deer.nickname || deer.deer_code || "Unnamed deer")}
+        </option>
+      `
+    )
+    .join("");
+}
+
+
 function renderSelectedPreviews(files) {
   const section =
     $("photoPreviewSection");
@@ -972,6 +1075,22 @@ function renderSelectedPreviews(files) {
         <div class="pre-ai-badge">
           Review before AI
         </div>
+
+        <label class="metadata-field">
+          Known deer
+          <select id="metaKnownDeer-${index}">
+            <option value="">Unknown — let HOSE try to match it</option>
+            ${knownDeerOptions($("uploadProperty")?.value || "")}
+          </select>
+        </label>
+
+        <label class="metadata-field reference-choice">
+          <input
+            id="metaPreferReference-${index}"
+            type="checkbox"
+          >
+          Use this as the profile/reference photo if assigned or confirmed
+        </label>
 
         <label class="metadata-field">
           Capture date / time
@@ -1062,6 +1181,15 @@ function getPendingPhotoMetadata(index, file) {
         tagsInput?.value
       ),
 
+    assigned_deer_profile_id:
+      $(`metaKnownDeer-${index}`)?.value
+      || null,
+
+    prefer_as_reference:
+      Boolean(
+        $(`metaPreferReference-${index}`)?.checked
+      ),
+
     metadata_reviewed:
       true
   };
@@ -1117,6 +1245,34 @@ async function uploadPhotos() {
           i,
           file
         );
+
+      $("uploadProgress").textContent =
+        `Checking ${i + 1} of ${files.length} for duplicates: ${file.name}`;
+
+      const fileHash =
+        await sha256File(file);
+
+      const {
+        data: duplicatePhoto,
+        error: duplicateLookupError
+      } =
+        await sb
+          .from("trail_photos")
+          .select("id, original_filename, processing_status")
+          .eq("user_id", currentUser.id)
+          .eq("file_hash", fileHash)
+          .maybeSingle();
+
+      if (duplicateLookupError) {
+        throw duplicateLookupError;
+      }
+
+      if (duplicatePhoto) {
+        $("uploadProgress").textContent =
+          `Skipped exact duplicate: ${file.name}. HOSE already has this image.`;
+
+        continue;
+      }
 
       const path =
         `${currentUser.id}/${propertyId}/${cameraId}/${fileId}-${safeFileName(file.name)}`;
@@ -1187,6 +1343,15 @@ async function uploadPhotos() {
             metadata_reviewed:
               metadata.metadata_reviewed,
 
+            assigned_deer_profile_id:
+              metadata.assigned_deer_profile_id,
+
+            prefer_as_reference:
+              metadata.prefer_as_reference,
+
+            file_hash:
+              fileHash,
+
             processing_status:
               "queued"
           })
@@ -1215,6 +1380,15 @@ async function uploadPhotos() {
         "HOSE AI RESULT",
         aiResult
       );
+
+      if (
+        aiResult?.identity?.status ===
+        "needs_confirmation"
+      ) {
+        await showDeerMatchConfirmation(
+          aiResult
+        );
+      }
 
       analyzed++;
 
@@ -1566,6 +1740,12 @@ function renderDeerProfiles() {
 
         return `
           <div class="stack-item deer-profile-card">
+
+            ${
+              deerProfilePhotoUrls.get(deer.id)
+                ? `<img class="deer-profile-image" src="${deerProfilePhotoUrls.get(deer.id)}" alt="Reference photo for ${escapeHtml(deer.nickname || deer.deer_code || "deer")}">`
+                : `<div class="deer-profile-image deer-profile-image-empty">🦌</div>`
+            }
 
             <div class="stack-item-head">
 
@@ -2061,6 +2241,246 @@ async function toggleTargetTag(deerId) {
 
   await loadDeerProfiles();
   renderDeerProfiles();
+}
+
+
+function ensureDeerMatchConfirmationUi() {
+  if ($("deerMatchConfirmation")) {
+    return;
+  }
+
+  const modal =
+    document.createElement("div");
+
+  modal.id =
+    "deerMatchConfirmation";
+
+  modal.className =
+    "hose-modal hidden";
+
+  modal.innerHTML = `
+    <div class="hose-modal-backdrop"></div>
+    <article class="hose-modal-card match-confirm-card">
+      <div class="eyebrow">HOSE Identity Review</div>
+      <h3>Possible Existing Deer</h3>
+
+      <div id="matchConfirmBody"></div>
+
+      <label class="reference-choice">
+        <input id="matchUseReference" type="checkbox">
+        Use this new image as this deer's profile photo
+      </label>
+
+      <div class="match-confirm-actions">
+        <button id="matchYesBtn" type="button" class="primary">
+          Yes — same deer
+        </button>
+
+        <button id="matchChooseBtn" type="button" class="secondary">
+          Choose another deer
+        </button>
+
+        <button id="matchNewBtn" type="button" class="secondary">
+          This is a new deer
+        </button>
+      </div>
+
+      <div id="matchAlternateWrap" class="hidden">
+        <label>
+          Existing deer
+          <select id="matchAlternateProfile"></select>
+        </label>
+        <button id="matchAlternateSaveBtn" type="button" class="primary">
+          Assign selected deer
+        </button>
+      </div>
+
+      <div id="matchConfirmMessage" class="small muted"></div>
+    </article>
+  `;
+
+  document.body.appendChild(modal);
+}
+
+
+function profileOptionRows(propertyId) {
+  return deerProfiles
+    .filter(
+      deer =>
+        !propertyId ||
+        deer.property_id === propertyId
+    )
+    .map(
+      deer =>
+        `<option value="${deer.id}">${escapeHtml(deer.nickname || deer.deer_code || "Unnamed deer")}</option>`
+    )
+    .join("");
+}
+
+
+function showDeerMatchConfirmation(aiResult) {
+  ensureDeerMatchConfirmationUi();
+
+  const identity =
+    aiResult.identity;
+
+  const candidate =
+    deerProfiles.find(
+      deer =>
+        deer.id ===
+        identity.candidate_deer_profile_id
+    );
+
+  const photoUrl =
+    candidate
+      ? deerProfilePhotoUrls.get(candidate.id)
+      : null;
+
+  const score =
+    Math.round(
+      Number(identity.match_score || identity.confidence || 0)
+      * 100
+    );
+
+  $("matchConfirmBody").innerHTML = `
+    <div class="match-side-by-side">
+      <div>
+        <div class="small muted">Possible match</div>
+        ${
+          photoUrl
+            ? `<img class="match-reference-image" src="${photoUrl}" alt="">`
+            : `<div class="match-reference-image deer-profile-image-empty">🦌</div>`
+        }
+      </div>
+
+      <div>
+        <strong>${escapeHtml(candidate?.nickname || candidate?.deer_code || "Existing deer")}</strong>
+        <div class="match-score">Match score: ${score}%</div>
+        <p class="small">${escapeHtml(identity.reason || "")}</p>
+        ${
+          identity.shared_traits?.length
+            ? `<p class="small"><strong>Shared:</strong> ${escapeHtml(identity.shared_traits.join(", "))}</p>`
+            : ""
+        }
+        ${
+          identity.conflicting_traits?.length
+            ? `<p class="small"><strong>Differences:</strong> ${escapeHtml(identity.conflicting_traits.join(", "))}</p>`
+            : ""
+        }
+      </div>
+    </div>
+  `;
+
+  $("matchAlternateProfile").innerHTML =
+    profileOptionRows(
+      candidate?.property_id
+    );
+
+  $("matchAlternateWrap").classList.add("hidden");
+  $("matchConfirmMessage").textContent = "";
+  $("matchUseReference").checked = false;
+  $("deerMatchConfirmation").classList.remove("hidden");
+
+  return new Promise(
+    resolve => {
+      const finish =
+        async (
+          decision,
+          deerProfileId = null
+        ) => {
+          $("matchConfirmMessage").textContent =
+            "Saving your decision…";
+
+          try {
+            const {
+              data,
+              error
+            } =
+              await sb.functions.invoke(
+                "process-deer-photo",
+                {
+                  body: {
+                    action:
+                      "resolve_match",
+
+                    photo_id:
+                      aiResult.photo_id,
+
+                    deer_match_id:
+                      identity.deer_match_id,
+
+                    decision,
+
+                    deer_profile_id:
+                      deerProfileId,
+
+                    use_as_reference:
+                      $("matchUseReference").checked
+                  }
+                }
+              );
+
+            if (error) {
+              throw error;
+            }
+
+            if (data?.ok === false) {
+              throw new Error(
+                data.error ||
+                "Could not save match decision."
+              );
+            }
+
+            $("deerMatchConfirmation").classList.add("hidden");
+            await loadDeerProfiles();
+            renderDeerProfiles();
+            resolve(data);
+
+          } catch (error) {
+            $("matchConfirmMessage").textContent =
+              error?.message ||
+              String(error);
+          }
+        };
+
+      $("matchYesBtn").onclick =
+        () =>
+          finish(
+            "confirm",
+            identity.candidate_deer_profile_id
+          );
+
+      $("matchNewBtn").onclick =
+        () =>
+          finish(
+            "new"
+          );
+
+      $("matchChooseBtn").onclick =
+        () => {
+          $("matchAlternateWrap")
+            .classList
+            .remove("hidden");
+        };
+
+      $("matchAlternateSaveBtn").onclick =
+        () => {
+          const selected =
+            $("matchAlternateProfile").value;
+
+          if (!selected) {
+            $("matchConfirmMessage").textContent =
+              "Choose an existing deer.";
+            return;
+          }
+
+          finish(
+            "confirm",
+            selected
+          );
+        };
+    }
+  );
 }
 
 
