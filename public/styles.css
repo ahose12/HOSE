@@ -425,3 +425,9 @@ a{
     align-items:stretch;
   }
 }
+
+/* HOSE private spatial intelligence */
+.map-control-grid{display:grid;grid-template-columns:1.35fr 1.35fr .8fr;gap:10px;align-items:end;margin-top:8px}
+.map-action{height:42px;align-self:end}
+#areaMap{height:520px;border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-bottom:14px}
+@media(max-width:800px){.map-control-grid{grid-template-columns:1fr}#areaMap{height:410px}}

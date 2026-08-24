@@ -147,7 +147,15 @@
         data-tab="area-intel"
         type="button"
       >
-        🗺 Area Deer Intelligence
+        📍 Area Intelligence
+      </button>
+
+      <button
+        class="app-tab"
+        data-tab="explore-plan"
+        type="button"
+      >
+        🗺 Explore &amp; Plan
       </button>
 
     </nav>
@@ -614,11 +622,88 @@
 
 
     <!-- =================================================== -->
-    <!-- TAB 2: AREA DEER INTELLIGENCE -->
+    <!-- TAB 2: PRIVATE AREA INTELLIGENCE -->
+    <!-- =================================================== -->
+
+    <section id="tab-area-intel" class="tab-panel hidden">
+      <div class="section-heading">
+        <div>
+          <div class="eyebrow">My Land</div>
+          <h2>Area Intelligence</h2>
+          <p>Drop your existing cameras and stands on the map so HOSE can connect deer activity to exact locations.</p>
+        </div>
+        <span class="private-pill">Private hunting map</span>
+      </div>
+
+      <article class="intel-card">
+        <div class="map-control-grid">
+          <label>Property
+            <select id="mapProperty"><option value="">Choose property…</option></select>
+          </label>
+          <label>Camera to place
+            <select id="mapCamera"><option value="">Choose camera…</option></select>
+          </label>
+          <button id="placeCameraBtn" class="primary map-action" type="button">📷 Place Camera</button>
+        </div>
+
+        <div class="map-control-grid">
+          <label>New stand name
+            <input id="standName" placeholder="Creek Stand">
+          </label>
+          <label>Stand habitat
+            <select id="standHabitat">
+              <option>Hardwoods</option><option>Field Edge</option><option>Creek / Drain</option>
+              <option>Ridge</option><option>Transition / Edge</option><option>Pines</option>
+              <option>Bedding Edge</option><option>Food Plot</option><option>Other</option>
+            </select>
+          </label>
+          <button id="addStandBtn" class="secondary map-action" type="button">🌲 Add Stand</button>
+        </div>
+
+        <div class="map-control-grid">
+          <label>Existing stand
+            <select id="mapStand"><option value="">Choose stand…</option></select>
+          </label>
+          <label>Pattern a deer
+            <select id="mapDeer"><option value="">All deer / no movement line</option></select>
+          </label>
+          <button id="placeStandBtn" class="secondary map-action" type="button">📍 Place Stand</button>
+        </div>
+
+        <div id="placementMessage" class="small muted">Choose a camera or stand, click Place, then click its real location on the map. Pins are draggable after placement.</div>
+      </article>
+
+      <div id="areaMap"></div>
+
+      <div class="metrics">
+        <div class="metric"><b id="areaCameraCount">0</b><span>mapped cameras</span></div>
+        <div class="metric"><b id="areaStandCount">0</b><span>mapped stands</span></div>
+        <div class="metric"><b id="areaSightingCount">0</b><span>sighting records</span></div>
+        <div class="metric"><b id="areaBuckCount">0</b><span>buck observations</span></div>
+      </div>
+
+      <div class="trail-grid two">
+        <article class="intel-card">
+          <div class="eyebrow">Camera Activity</div>
+          <h3>What Is Moving Where</h3>
+          <div id="cameraActivityCards" class="stack-list"></div>
+        </article>
+        <article class="intel-card">
+          <div class="eyebrow">Spatial Pattern</div>
+          <h3 id="spatialTitle">Property Pattern</h3>
+          <div id="spatialSummary" class="stack-list">
+            <div class="muted">Map cameras and process sightings to build spatial patterns.</div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- =================================================== -->
+    <!-- TAB 3: EXPLORE & PLAN -->
     <!-- =================================================== -->
 
     <section
-      id="tab-area-intel"
+      id="tab-explore-plan"
       class="tab-panel hidden"
     >
 
@@ -631,12 +716,11 @@
           </div>
 
           <h2>
-            Real Estate + Public Land Deer Intelligence
+            Explore &amp; Plan
           </h2>
 
           <p>
-            Search confirmed external deer observations around a private
-            address or Alabama public hunting area.
+            Search public hunting areas and confirmed external deer intelligence. Active listings and lodging feeds can be added here as HOSE planning data.
           </p>
 
         </div>
@@ -792,7 +876,7 @@
 
 <script src="supabase-config.js"></script>
 
-<script src="app.js?v=20260815-authgate1"></script>
+<script src="app.js?v=20260824-spatial2"></script>
 
 </body>
 </html>
