@@ -861,3 +861,257 @@ a{
   font-weight: 800;
   color: var(--accent);
 }
+
+
+/* HOSE single-deer focus dashboard */
+.deer-focus-shell {
+  width: 100%;
+}
+
+.deer-focus-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 18px;
+  margin-bottom: 16px;
+}
+
+.deer-focus-toolbar h2 {
+  margin: 3px 0 0;
+}
+
+.deer-focus-sort {
+  min-width: 210px;
+}
+
+.deer-focus-sort span {
+  display: block;
+  margin-bottom: 5px;
+  font-size: .75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.deer-focus-sort select {
+  width: 100%;
+}
+
+.deer-focus-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr);
+  gap: 28px;
+  align-items: stretch;
+  padding: 22px 64px;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+
+.deer-focus-image-column {
+  min-width: 0;
+}
+
+.deer-focus-image-wrap {
+  width: 100%;
+  height: 540px;
+  overflow: hidden;
+  border-radius: 20px;
+  background: rgba(0,0,0,.12);
+}
+
+.deer-focus-image-wrap img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.deer-focus-image-empty {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  font-size: 7rem;
+}
+
+.deer-focus-position {
+  margin-top: 9px;
+  text-align: center;
+  font-size: .85rem;
+  font-weight: 800;
+  opacity: .65;
+}
+
+.deer-focus-arrow {
+  position: absolute;
+  z-index: 4;
+  top: 50%;
+  width: 46px;
+  height: 72px;
+  transform: translateY(-50%);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+  font-size: 2.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.deer-focus-arrow-left {
+  left: 10px;
+}
+
+.deer-focus-arrow-right {
+  right: 10px;
+}
+
+.deer-focus-details {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+
+.deer-focus-name-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.deer-focus-name-row h1 {
+  margin: 0 0 8px;
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  line-height: 1;
+}
+
+.deer-focus-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.deer-focus-score {
+  margin-top: 24px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.deer-focus-score > span,
+.deer-focus-grid span,
+.deer-focus-history span {
+  display: block;
+  font-size: .72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  opacity: .65;
+}
+
+.deer-focus-score strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 3rem;
+  line-height: 1;
+}
+
+.deer-focus-score small {
+  display: block;
+  margin-top: 5px;
+}
+
+.deer-focus-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.deer-focus-grid > div {
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+}
+
+.deer-focus-grid strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 1.25rem;
+}
+
+.deer-focus-history {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.deer-focus-history > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.deer-focus-history strong {
+  text-align: right;
+}
+
+.deer-focus-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.deer-focus-empty {
+  padding: 48px 20px;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+}
+
+@media (max-width: 850px) {
+  .deer-focus-card {
+    grid-template-columns: 1fr;
+    padding: 54px 18px 22px;
+  }
+
+  .deer-focus-image-wrap {
+    height: min(58vh, 540px);
+  }
+
+  .deer-focus-arrow {
+    top: 10px;
+    height: 40px;
+    transform: none;
+  }
+
+  .deer-focus-arrow-left {
+    left: 18px;
+  }
+
+  .deer-focus-arrow-right {
+    right: 18px;
+  }
+}
+
+@media (max-width: 600px) {
+  .deer-focus-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .deer-focus-sort {
+    width: 100%;
+  }
+
+  .deer-focus-actions button {
+    flex: 1 1 100%;
+  }
+}

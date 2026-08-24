@@ -1705,238 +1705,342 @@ function renderCameras() {
 }
 
 
+let activeDeerProfileIndex = 0;
+let deerProfileSortMode = "biggest_score";
+
+function deerScoreValue(deer) {
+  const value = deer.user_estimated_score ?? deer.ai_score_estimate;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : -1;
+}
+
+function deerAgeValue(deer) {
+  const value = deer.estimated_age ?? deer.estimated_age_class ?? "";
+  const match = String(value).match(/[0-9]+(?:\.[0-9]+)?/);
+  return match ? Number(match[0]) : -1;
+}
+
+function deerFirstSeenValue(deer) {
+  const value = deer.first_seen ?? deer.created_at;
+  const time = value ? new Date(value).getTime() : NaN;
+  return Number.isFinite(time) ? time : Number.MAX_SAFE_INTEGER;
+}
+
+function deerLastSeenValue(deer) {
+  const value = deer.last_seen ?? deer.updated_at;
+  const time = value ? new Date(value).getTime() : NaN;
+  return Number.isFinite(time) ? time : 0;
+}
+
+function sortedDeerProfiles() {
+  const rows = [...deerProfiles];
+
+  rows.sort((a, b) => {
+    switch (deerProfileSortMode) {
+      case "oldest_age":
+        return deerAgeValue(b) - deerAgeValue(a);
+
+      case "latest_seen":
+        return deerLastSeenValue(b) - deerLastSeenValue(a);
+
+      case "oldest_photo":
+        return deerFirstSeenValue(a) - deerFirstSeenValue(b);
+
+      case "biggest_score":
+      default:
+        return deerScoreValue(b) - deerScoreValue(a);
+    }
+  });
+
+  return rows;
+}
+
+function moveDeerProfile(direction) {
+  const rows = sortedDeerProfiles();
+
+  if (!rows.length) {
+    return;
+  }
+
+  activeDeerProfileIndex =
+    (activeDeerProfileIndex + direction + rows.length)
+    % rows.length;
+
+  renderDeerProfiles();
+}
+
+function setDeerProfileSort(mode) {
+  deerProfileSortMode = mode;
+  activeDeerProfileIndex = 0;
+  renderDeerProfiles();
+}
+
 function renderDeerProfiles() {
+  const container = $("deerCards");
+
+  if (!container) {
+    return;
+  }
+
   if (!deerProfiles.length) {
-    $("deerCards").innerHTML =
-      '<div class="muted">No AI-created deer profiles yet.</div>';
+    container.innerHTML = `
+      <section class="deer-focus-empty">
+        <div class="eyebrow">Deer Intelligence</div>
+        <h2>No deer profiles yet</h2>
+        <p class="muted">
+          Upload a trail-camera photo to begin building deer intelligence.
+        </p>
+      </section>
+    `;
 
     renderTargetBuckSelector();
     return;
   }
 
-  $("deerCards").innerHTML =
-    deerProfiles.map(
-      deer => {
-        const tags =
-          parseTags(
-            deer.profile_tags
-          );
+  const rows = sortedDeerProfiles();
 
-        const target =
-          hasProfileTag(
-            deer,
-            "Target"
-          );
+  if (activeDeerProfileIndex >= rows.length) {
+    activeDeerProfileIndex = 0;
+  }
 
-        const tagHtml =
-          tags.length
-            ? tags
-                .map(
-                  tag =>
-                    `<span class="meta-chip deer-tag ${tag.toLowerCase() === "target" ? "target-tag" : ""}">${escapeHtml(tag)}</span>`
-                )
-                .join("")
-            : '<span class="small muted">No tags yet</span>';
+  const deer = rows[activeDeerProfileIndex];
+  const tags = parseTags(deer.profile_tags);
+  const score = deerScoreValue(deer);
+  const age = deerAgeValue(deer);
+  const firstSeen = deer.first_seen ?? deer.created_at;
+  const lastSeen = deer.last_seen ?? deer.updated_at;
+  const photoUrl = deerProfilePhotoUrls.get(deer.id);
 
-        return `
-          <div class="stack-item deer-profile-card">
+  const fingerprint = deer.identity_fingerprint || {};
+  const evidenceCount = Number(fingerprint.evidence_photo_count || 0);
+  const angles = fingerprint.all_view_angles || [];
 
+  const identityConfidence =
+    deer.identity_confidence != null
+      ? `${Math.round(Number(deer.identity_confidence) * 100)}%`
+      : evidenceCount
+        ? `${evidenceCount} confirmed`
+        : "Building";
+
+  const scoreRange =
+    deer.ai_score_range_low != null &&
+    deer.ai_score_range_high != null
+      ? `${Number(deer.ai_score_range_low).toFixed(0)}–${Number(deer.ai_score_range_high).toFixed(0)}" range`
+      : "No range yet";
+
+  container.innerHTML = `
+    <section class="deer-focus-shell">
+
+      <div class="deer-focus-toolbar">
+        <div>
+          <div class="eyebrow">Deer Intelligence</div>
+          <h2>Deer Profile</h2>
+        </div>
+
+        <label class="deer-focus-sort">
+          <span>Sort deer by</span>
+
+          <select onchange="setDeerProfileSort(this.value)">
+            <option value="biggest_score" ${deerProfileSortMode === "biggest_score" ? "selected" : ""}>
+              Biggest score
+            </option>
+
+            <option value="oldest_age" ${deerProfileSortMode === "oldest_age" ? "selected" : ""}>
+              Oldest deer
+            </option>
+
+            <option value="latest_seen" ${deerProfileSortMode === "latest_seen" ? "selected" : ""}>
+              Latest seen
+            </option>
+
+            <option value="oldest_photo" ${deerProfileSortMode === "oldest_photo" ? "selected" : ""}>
+              Oldest picture date
+            </option>
+          </select>
+        </label>
+      </div>
+
+      <article class="deer-focus-card">
+
+        <button
+          class="deer-focus-arrow deer-focus-arrow-left"
+          type="button"
+          onclick="moveDeerProfile(-1)"
+          aria-label="Previous deer"
+        >
+          &#8249;
+        </button>
+
+        <div class="deer-focus-image-column">
+
+          <div class="deer-focus-image-wrap">
             ${
-              deerProfilePhotoUrls.get(deer.id)
-                ? `<img class="deer-profile-image" src="${deerProfilePhotoUrls.get(deer.id)}" alt="Reference photo for ${escapeHtml(deer.nickname || deer.deer_code || "deer")}">`
-                : `<div class="deer-profile-image deer-profile-image-empty">🦌</div>`
+              photoUrl
+                ? `<img src="${photoUrl}" alt="Profile photo for ${escapeHtml(deer.nickname || deer.deer_code || "deer")}">`
+                : `<div class="deer-focus-image-empty">🦌</div>`
             }
+          </div>
 
-            <div class="stack-item-head">
+          <div class="deer-focus-position">
+            ${activeDeerProfileIndex + 1} of ${rows.length}
+          </div>
 
-              <div>
+        </div>
 
-                <strong>
-                  🦌
-                  ${
-                    escapeHtml(
-                      deer.nickname
-                      ||
-                      deer.deer_code
-                      ||
-                      "Unnamed deer"
-                    )
-                  }
-                </strong>
+        <button
+          class="deer-focus-arrow deer-focus-arrow-right"
+          type="button"
+          onclick="moveDeerProfile(1)"
+          aria-label="Next deer"
+        >
+          &#8250;
+        </button>
 
-                <div class="small muted">
-                  ${
-                    escapeHtml(
-                      deer.sex
-                      || "unknown"
-                    )
-                  }
-                  ·
-                  ${
-                    deer.sighting_count
-                    || 0
-                  }
-                  sightings
-                </div>
+        <div class="deer-focus-details">
 
+          <div class="deer-focus-name-row">
+
+            <div>
+              <h1>
+                ${escapeHtml(deer.nickname || deer.deer_code || "Unnamed Deer")}
+              </h1>
+
+              <div class="deer-focus-tags">
                 ${
-                  deer.estimated_age_class
-                    ? `<div class="small muted">Estimated age: ${escapeHtml(deer.estimated_age_class)}</div>`
-                    : ""
+                  tags.length
+                    ? tags.map(tag => `<span class="meta-chip deer-tag ${tag.toLowerCase() === "target" ? "target-tag" : ""}">${escapeHtml(tag)}</span>`).join("")
+                    : `<span class="small muted">No tags yet</span>`
                 }
-
-                ${
-                  deer.user_estimated_score != null
-                    ? `<div class="small muted">Hunter score estimate: ${escapeHtml(deer.user_estimated_score)}"</div>`
-                    : ""
-                }
-
               </div>
-
-              <div class="profile-actions">
-                <button
-                  class="secondary mini"
-                  type="button"
-                  onclick="toggleTargetTag('${deer.id}')"
-                >
-                  ${target ? "✓ Target" : "Mark Target"}
-                </button>
-
-                <button
-                  class="secondary mini"
-                  type="button"
-                  onclick="openDeerProfileEditor('${deer.id}')"
-                >
-                  Edit Profile
-                </button>
-
-                <button
-                  class="secondary mini"
-                  type="button"
-                  onclick="openMergeDeer('${deer.id}')"
-                >
-                  Merge
-                </button>
-
-                <button
-                  class="secondary mini"
-                  type="button"
-                  onclick="openScoreFeedback('${deer.id}')"
-                >
-                  Score Feedback
-                </button>
-              </div>
-
             </div>
-
-            <div class="meta-row deer-tag-row">
-              ${tagHtml}
-            </div>
-
-            ${
-              deer.antler_signature
-                ? `<p class="small"><strong>AI antlers:</strong> ${escapeHtml(deer.antler_signature)}</p>`
-                : ""
-            }
-
-            ${
-              deer.confirmed_characteristics
-                ? `<p class="small"><strong>Confirmed / hunter characteristics:</strong> ${escapeHtml(deer.confirmed_characteristics)}</p>`
-                : ""
-            }
-
-            ${
-              deer.phenotype_notes
-                ? `<p class="small"><strong>AI traits:</strong> ${escapeHtml(deer.phenotype_notes)}</p>`
-                : ""
-            }
-
-            ${
-              deer.hunter_notes
-                ? `<p class="small"><strong>Hunter notes:</strong> ${escapeHtml(deer.hunter_notes)}</p>`
-                : ""
-            }
-
-            ${
-              deer.identity_fingerprint?.evidence_photo_count
-                ? `
-                  <div class="identity-fingerprint-summary">
-                    <strong>Identity fingerprint</strong>
-                    <div class="small muted">
-                      ${deer.identity_fingerprint.evidence_photo_count} confirmed evidence photo${deer.identity_fingerprint.evidence_photo_count === 1 ? "" : "s"}
-                      ·
-                      ${(deer.identity_fingerprint.all_view_angles || []).length} useful angle${(deer.identity_fingerprint.all_view_angles || []).length === 1 ? "" : "s"}
-                    </div>
-                    ${
-                      (deer.identity_fingerprint.all_view_angles || []).length
-                        ? `<div class="meta-row">${deer.identity_fingerprint.all_view_angles.map(angle => `<span class="meta-chip">${escapeHtml(angle.replaceAll("_", " "))}</span>`).join("")}</div>`
-                        : ""
-                    }
-                  </div>
-                `
-                : ""
-            }
-
-            ${
-              deer.ai_score_estimate != null
-                ? `
-                  <div class="profile-score-box">
-                    <div class="small muted">HOSE multi-photo gross score estimate</div>
-                    <strong>~${Number(deer.ai_score_estimate).toFixed(1)}"</strong>
-                    ${
-                      deer.ai_score_range_low != null &&
-                      deer.ai_score_range_high != null
-                        ? `<span>${Number(deer.ai_score_range_low).toFixed(0)}–${Number(deer.ai_score_range_high).toFixed(0)}" range</span>`
-                        : ""
-                    }
-                    ${
-                      deer.ai_score_confidence != null
-                        ? `<span class="small muted">${Math.round(Number(deer.ai_score_confidence) * 100)}% score confidence</span>`
-                        : ""
-                    }
-                    ${
-                      deer.identity_fingerprint?.latest_season &&
-                      deer.identity_fingerprint?.seasons?.[deer.identity_fingerprint.latest_season]?.score?.angle_family_count
-                        ? `<div class="small muted">${deer.identity_fingerprint.seasons[deer.identity_fingerprint.latest_season].score.angle_family_count} complementary angle group(s) contributing to confidence.</div>`
-                        : ""
-                    }
-                    ${
-                      deer.calibration_applied
-                        ? `
-                          <div class="small calibration-applied">
-                            HOSE calibration applied
-                            ${
-                              deer.calibration_sample_count != null
-                                ? ` · ${deer.calibration_sample_count} feedback sample${Number(deer.calibration_sample_count) === 1 ? "" : "s"}`
-                                : ""
-                            }
-                          </div>
-                        `
-                        : ""
-                    }
-                    <div class="small muted">Photo estimate only — not an official B&C measurement.</div>
-                  </div>
-                `
-                : ""
-            }
 
             <button
-              type="button"
               class="secondary mini"
-              onclick="openIdentityEvidence('${deer.id}')"
+              type="button"
+              onclick="openDeerProfileEditor('${deer.id}')"
             >
-              View Identity Evidence
+              Edit
             </button>
 
           </div>
-        `;
-      }
-    )
-    .join("");
+
+          <div class="deer-focus-score">
+            <span>HOSE Score</span>
+
+            <strong>
+              ${score >= 0 ? `~${score.toFixed(1)}"` + '"' : "—"}
+            </strong>
+
+            <small>${scoreRange}</small>
+
+            ${
+              deer.ai_score_confidence != null
+                ? `<small>${Math.round(Number(deer.ai_score_confidence) * 100)}% score confidence</small>`
+                : ""
+            }
+
+            ${
+              deer.calibration_applied
+                ? `<small class="calibration-applied">HOSE calibration applied</small>`
+                : ""
+            }
+          </div>
+
+          <div class="deer-focus-grid">
+
+            <div>
+              <span>Estimated Age</span>
+              <strong>${age >= 0 ? `${age} yr` : "—"}</strong>
+            </div>
+
+            <div>
+              <span>Identity</span>
+              <strong>${identityConfidence}</strong>
+            </div>
+
+            <div>
+              <span>Sightings</span>
+              <strong>${Number(deer.sighting_count || 0)}</strong>
+            </div>
+
+            <div>
+              <span>Useful Angles</span>
+              <strong>${angles.length}</strong>
+            </div>
+
+          </div>
+
+          <div class="deer-focus-history">
+
+            <div>
+              <span>First seen</span>
+              <strong>${firstSeen ? new Date(firstSeen).toLocaleDateString() : "Unknown"}</strong>
+            </div>
+
+            <div>
+              <span>Last seen</span>
+              <strong>${lastSeen ? new Date(lastSeen).toLocaleString() : "Unknown"}</strong>
+            </div>
+
+          </div>
+
+          ${
+            deer.confirmed_characteristics
+              ? `<p class="small"><strong>Confirmed characteristics:</strong> ${escapeHtml(deer.confirmed_characteristics)}</p>`
+              : ""
+          }
+
+          ${
+            deer.hunter_notes
+              ? `<p class="small"><strong>Hunter notes:</strong> ${escapeHtml(deer.hunter_notes)}</p>`
+              : ""
+          }
+
+          <div class="deer-focus-actions">
+
+            <button
+              class="primary"
+              type="button"
+              onclick="openIdentityEvidence('${deer.id}')"
+            >
+              Identity Evidence
+            </button>
+
+            <button
+              class="secondary"
+              type="button"
+              onclick="openScoreFeedback('${deer.id}')"
+            >
+              Score Feedback
+            </button>
+
+            <button
+              class="secondary"
+              type="button"
+              onclick="openMergeDeer('${deer.id}')"
+            >
+              Merge Deer
+            </button>
+
+            <button
+              class="secondary"
+              type="button"
+              onclick="toggleTargetTag('${deer.id}')"
+            >
+              ${hasProfileTag(deer, "Target") ? "✓ Target" : "Mark Target"}
+            </button>
+
+          </div>
+
+        </div>
+
+      </article>
+
+    </section>
+  `;
 
   renderTargetBuckSelector();
 }
-
 
 
 function ensureMergeDeerUi() {
@@ -5924,6 +6028,12 @@ window.openMergeDeer =
 
 window.openScoreFeedback =
   openScoreFeedback;
+
+window.moveDeerProfile =
+  moveDeerProfile;
+
+window.setDeerProfileSort =
+  setDeerProfileSort;
 
 
 window.addEventListener(
