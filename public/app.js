@@ -475,6 +475,685 @@ async function signOut() {
    TABS
    ============================================================ */
 
+
+function topLevelTabBlock(
+  element,
+  tab
+) {
+  if (
+    !element ||
+    !tab
+  ) {
+    return null;
+  }
+
+  let node =
+    element;
+
+  while (
+    node.parentElement &&
+    node.parentElement !== tab
+  ) {
+    node =
+      node.parentElement;
+  }
+
+  return (
+    node.parentElement === tab
+      ? node
+      : null
+  );
+}
+
+
+function moveSetupToAreaIntelligence() {
+  const myTab =
+    $("tab-my-intel");
+
+  const areaTab =
+    $("tab-area-intel");
+
+  if (
+    !myTab ||
+    !areaTab
+  ) {
+    return;
+  }
+
+  /*
+   * Make the deer profile THE primary first-tab experience.
+   * Whatever top-level card contains deerCards is moved first and
+   * forced to span the available width.
+   */
+  const deerBlock =
+    topLevelTabBlock(
+      $("deerCards"),
+      myTab
+    );
+
+  if (deerBlock) {
+    deerBlock.classList.add(
+      "deer-primary-block"
+    );
+
+    myTab.prepend(
+      deerBlock
+    );
+  }
+
+
+  /*
+   * Move setup / upload context out of Deer Intelligence.
+   *
+   * These controls belong together spatially:
+   * property setup, camera setup, trail-photo upload/context.
+   *
+   * We move their existing DOM blocks instead of cloning them,
+   * so every existing event listener and ID continues to work.
+   */
+  const setupElements =
+    [
+      $("propertyName"),
+      $("cameraName"),
+      $("cameraCards"),
+      $("photoUpload"),
+      $("uploadProperty"),
+      $("uploadCamera"),
+      $("recentPhotos")
+    ]
+    .filter(Boolean);
+
+  const blocks =
+    [];
+
+  setupElements.forEach(
+    element => {
+      const block =
+        topLevelTabBlock(
+          element,
+          myTab
+        );
+
+      if (
+        block &&
+        block !== deerBlock &&
+        !blocks.includes(block)
+      ) {
+        blocks.push(
+          block
+        );
+      }
+    }
+  );
+
+  if (blocks.length) {
+    let setupHost =
+      $("areaSetupHost");
+
+    if (!setupHost) {
+      setupHost =
+        document.createElement(
+          "section"
+        );
+
+      setupHost.id =
+        "areaSetupHost";
+
+      setupHost.className =
+        "area-setup-host";
+
+      setupHost.innerHTML = `
+        <div class="area-setup-heading">
+          <div>
+            <div class="eyebrow">
+              Property & Camera Setup
+            </div>
+
+            <h2>
+              Picture & Camera Context
+            </h2>
+
+            <p class="small muted">
+              Add properties and cameras, then upload trail-camera photos with the correct property/camera context.
+            </p>
+          </div>
+        </div>
+      `;
+
+      /*
+       * Put setup BEFORE the Area Intelligence map controls.
+       */
+      areaTab.prepend(
+        setupHost
+      );
+    }
+
+    blocks.forEach(
+      block => {
+        block.classList.add(
+          "area-moved-setup-block"
+        );
+
+        setupHost.appendChild(
+          block
+        );
+      }
+    );
+  }
+}
+
+
+function ensureStandMetadataControls() {
+  if (
+    $("standType")
+    ||
+    !$("standName")
+  ) {
+    return;
+  }
+
+  const standName =
+    $("standName");
+
+  const parent =
+    standName.parentElement;
+
+  if (!parent) {
+    return;
+  }
+
+  const typeLabel =
+    document.createElement(
+      "label"
+    );
+
+  typeLabel.className =
+    "stand-extra-field";
+
+  typeLabel.innerHTML = `
+    Stand type
+    <select id="standType">
+      <option value="hang_on">Hang-On / Lock-On</option>
+      <option value="ladder">Ladder Stand</option>
+      <option value="climber">Climber</option>
+      <option value="saddle">Saddle</option>
+      <option value="ground_blind">Ground Blind</option>
+      <option value="box_blind">Box Blind / Shooting House</option>
+      <option value="tripod">Tripod</option>
+      <option value="natural">Natural / Ground Setup</option>
+      <option value="other">Other</option>
+    </select>
+  `;
+
+  const facingLabel =
+    document.createElement(
+      "label"
+    );
+
+  facingLabel.className =
+    "stand-extra-field";
+
+  facingLabel.innerHTML = `
+    Facing / shot direction
+    <select id="standFacing">
+      <option value="">Not set</option>
+      <option value="N">North</option>
+      <option value="NE">Northeast</option>
+      <option value="E">East</option>
+      <option value="SE">Southeast</option>
+      <option value="S">South</option>
+      <option value="SW">Southwest</option>
+      <option value="W">West</option>
+      <option value="NW">Northwest</option>
+    </select>
+  `;
+
+  const heightLabel =
+    document.createElement(
+      "label"
+    );
+
+  heightLabel.className =
+    "stand-extra-field";
+
+  heightLabel.innerHTML = `
+    Height (ft)
+    <input
+      id="standHeight"
+      type="number"
+      min="0"
+      max="80"
+      step="1"
+      placeholder="18"
+    >
+  `;
+
+  const notesLabel =
+    document.createElement(
+      "label"
+    );
+
+  notesLabel.className =
+    "stand-extra-field stand-access-field";
+
+  notesLabel.innerHTML = `
+    Access / stand notes
+    <input
+      id="standAccessNotes"
+      placeholder="Enter from creek, quiet access, climb tree notes..."
+    >
+  `;
+
+  /*
+   * Add beside the existing stand controls while retaining the
+   * original habitat field and Add Stand button.
+   */
+  parent.insertAdjacentElement(
+    "afterend",
+    typeLabel
+  );
+
+  typeLabel.insertAdjacentElement(
+    "afterend",
+    facingLabel
+  );
+
+  facingLabel.insertAdjacentElement(
+    "afterend",
+    heightLabel
+  );
+
+  heightLabel.insertAdjacentElement(
+    "afterend",
+    notesLabel
+  );
+
+
+  if (
+    $("mapStand") &&
+    !$("editStandDetailsBtn")
+  ) {
+    const button =
+      document.createElement(
+        "button"
+      );
+
+    button.id =
+      "editStandDetailsBtn";
+
+    button.type =
+      "button";
+
+    button.className =
+      "secondary map-action";
+
+    button.textContent =
+      "Edit Stand Details";
+
+    button.addEventListener(
+      "click",
+      openSelectedStandEditor
+    );
+
+    $("mapStand")
+      .parentElement
+      ?.insertAdjacentElement(
+        "afterend",
+        button
+      );
+  }
+}
+
+
+function standTypeLabel(value) {
+  const labels = {
+    hang_on:
+      "Hang-On / Lock-On",
+
+    ladder:
+      "Ladder Stand",
+
+    climber:
+      "Climber",
+
+    saddle:
+      "Saddle",
+
+    ground_blind:
+      "Ground Blind",
+
+    box_blind:
+      "Box Blind / Shooting House",
+
+    tripod:
+      "Tripod",
+
+    natural:
+      "Natural / Ground Setup",
+
+    other:
+      "Other"
+  };
+
+  return (
+    labels[value]
+    ||
+    value
+    ||
+    "Type not set"
+  );
+}
+
+
+function ensureStandEditor() {
+  if (
+    $("standEditorModal")
+  ) {
+    return;
+  }
+
+  const modal =
+    document.createElement(
+      "div"
+    );
+
+  modal.id =
+    "standEditorModal";
+
+  modal.className =
+    "hose-modal hidden";
+
+  modal.innerHTML = `
+    <div class="hose-modal-backdrop"></div>
+
+    <article class="hose-modal-card">
+      <div class="card-heading">
+        <div>
+          <div class="eyebrow">
+            Stand Metadata
+          </div>
+
+          <h3>
+            Edit Stand Details
+          </h3>
+        </div>
+
+        <button
+          id="closeStandEditorBtn"
+          type="button"
+          class="secondary mini"
+        >
+          Close
+        </button>
+      </div>
+
+      <input
+        id="editStandId"
+        type="hidden"
+      >
+
+      <label>
+        Stand name
+        <input
+          id="editStandName"
+        >
+      </label>
+
+      <div class="form-grid">
+        <label>
+          Stand type
+          <select id="editStandType">
+            <option value="hang_on">Hang-On / Lock-On</option>
+            <option value="ladder">Ladder Stand</option>
+            <option value="climber">Climber</option>
+            <option value="saddle">Saddle</option>
+            <option value="ground_blind">Ground Blind</option>
+            <option value="box_blind">Box Blind / Shooting House</option>
+            <option value="tripod">Tripod</option>
+            <option value="natural">Natural / Ground Setup</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+
+        <label>
+          Facing / shot direction
+          <select id="editStandFacing">
+            <option value="">Not set</option>
+            <option value="N">North</option>
+            <option value="NE">Northeast</option>
+            <option value="E">East</option>
+            <option value="SE">Southeast</option>
+            <option value="S">South</option>
+            <option value="SW">Southwest</option>
+            <option value="W">West</option>
+            <option value="NW">Northwest</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="form-grid">
+        <label>
+          Habitat
+          <input
+            id="editStandHabitat"
+          >
+        </label>
+
+        <label>
+          Height (ft)
+          <input
+            id="editStandHeight"
+            type="number"
+            min="0"
+            max="80"
+            step="1"
+          >
+        </label>
+      </div>
+
+      <label>
+        Access / stand notes
+        <textarea
+          id="editStandAccessNotes"
+          rows="3"
+          placeholder="Entry route, climb notes, shooting lanes, etc."
+        ></textarea>
+      </label>
+
+      <button
+        id="saveStandDetailsBtn"
+        type="button"
+        class="primary"
+      >
+        Save Stand Details
+      </button>
+
+      <div
+        id="standEditorMessage"
+        class="small muted"
+      ></div>
+    </article>
+  `;
+
+  document.body.appendChild(
+    modal
+  );
+
+  $("closeStandEditorBtn")
+    .addEventListener(
+      "click",
+      () =>
+        modal.classList.add(
+          "hidden"
+        )
+    );
+
+  modal
+    .querySelector(
+      ".hose-modal-backdrop"
+    )
+    .addEventListener(
+      "click",
+      () =>
+        modal.classList.add(
+          "hidden"
+        )
+    );
+
+  $("saveStandDetailsBtn")
+    .addEventListener(
+      "click",
+      saveStandDetails
+    );
+}
+
+
+function openSelectedStandEditor() {
+  const standId =
+    $("mapStand")?.value;
+
+  if (!standId) {
+    $("placementMessage").textContent =
+      "Choose an existing stand first.";
+    return;
+  }
+
+  ensureStandEditor();
+
+  const stand =
+    stands.find(
+      row =>
+        row.id === standId
+    );
+
+  if (!stand) {
+    return;
+  }
+
+  $("editStandId").value =
+    stand.id;
+
+  $("editStandName").value =
+    stand.name
+    ||
+    "";
+
+  $("editStandType").value =
+    stand.stand_type
+    ||
+    "hang_on";
+
+  $("editStandFacing").value =
+    stand.facing_direction
+    ||
+    "";
+
+  $("editStandHabitat").value =
+    stand.primary_habitat
+    ||
+    "";
+
+  $("editStandHeight").value =
+    stand.height_ft
+    ??
+    "";
+
+  $("editStandAccessNotes").value =
+    stand.access_notes
+    ||
+    "";
+
+  $("standEditorMessage").textContent =
+    "";
+
+  $("standEditorModal")
+    .classList
+    .remove(
+      "hidden"
+    );
+}
+
+
+async function saveStandDetails() {
+  const standId =
+    $("editStandId").value;
+
+  if (!standId) {
+    return;
+  }
+
+  $("standEditorMessage").textContent =
+    "Saving…";
+
+  const {
+    error
+  } =
+    await sb
+      .from("stands")
+      .update({
+        name:
+          $("editStandName").value.trim(),
+
+        stand_type:
+          $("editStandType").value,
+
+        facing_direction:
+          $("editStandFacing").value
+          ||
+          null,
+
+        primary_habitat:
+          $("editStandHabitat").value.trim()
+          ||
+          null,
+
+        height_ft:
+          $("editStandHeight").value
+            ? Number(
+                $("editStandHeight").value
+              )
+            : null,
+
+        access_notes:
+          $("editStandAccessNotes").value.trim()
+          ||
+          null
+      })
+      .eq(
+        "id",
+        standId
+      )
+      .eq(
+        "user_id",
+        currentUser.id
+      );
+
+  if (error) {
+    $("standEditorMessage").textContent =
+      error.message;
+
+    return;
+  }
+
+  await loadStands();
+  syncAreaSelectors();
+  renderAreaMap();
+
+  $("standEditorMessage").textContent =
+    "Stand details saved.";
+
+  setTimeout(
+    () =>
+      $("standEditorModal")
+        .classList
+        .add(
+          "hidden"
+        ),
+    350
+  );
+}
+
+
 function setupTabs() {
   document.querySelectorAll(".app-tab").forEach(button => {
     button.addEventListener("click", async () => {
@@ -487,6 +1166,9 @@ function setupTabs() {
       $("tab-explore-plan").classList.toggle("hidden", selected !== "explore-plan");
 
       if (selected === "area-intel") {
+        moveSetupToAreaIntelligence();
+        ensureStandMetadataControls();
+
         initAreaMap();
 
         // IMPORTANT: do not trust stale browser arrays.
@@ -5375,7 +6057,14 @@ function renderAreaMap() {
       draggable: true
     }).addTo(areaLayer);
 
-    marker.bindPopup(`<b>🌲 ${s.name}</b><br>${s.primary_habitat || "Habitat not set"}`);
+    marker.bindPopup(`
+      <b>🌲 ${s.name}</b>
+      <br>${standTypeLabel(s.stand_type)}
+      ${s.facing_direction ? `<br>Facing ${s.facing_direction}` : ""}
+      ${s.height_ft != null ? `<br>${s.height_ft} ft` : ""}
+      <br>${s.primary_habitat || "Habitat not set"}
+      ${s.access_notes ? `<br><small>${s.access_notes}</small>` : ""}
+    `);
     marker.on("dragend", async e => {
       const p = e.target.getLatLng();
       await saveStandLocation(s.id, p.lat, p.lng);
@@ -5648,7 +6337,31 @@ async function addMappedStand() {
     user_id: currentUser.id,
     property_id: propertyId,
     name,
-    primary_habitat: $("standHabitat").value,
+    primary_habitat:
+      $("standHabitat").value,
+
+    stand_type:
+      $("standType")?.value
+      ||
+      "hang_on",
+
+    facing_direction:
+      $("standFacing")?.value
+      ||
+      null,
+
+    height_ft:
+      $("standHeight")?.value
+        ? Number(
+            $("standHeight").value
+          )
+        : null,
+
+    access_notes:
+      $("standAccessNotes")?.value?.trim()
+      ||
+      null,
+
     active: true
   }).select().single();
 
@@ -5658,6 +6371,15 @@ async function addMappedStand() {
   }
 
   $("standName").value = "";
+
+  if ($("standHeight")) {
+    $("standHeight").value = "";
+  }
+
+  if ($("standAccessNotes")) {
+    $("standAccessNotes").value = "";
+  }
+
   await loadStands();
   syncAreaSelectors();
   $("mapStand").value = data.id;
@@ -6338,6 +7060,9 @@ async function init() {
    */
   try {
     setupTabs();
+
+    moveSetupToAreaIntelligence();
+    ensureStandMetadataControls();
 
     [
       cfg,
