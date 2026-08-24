@@ -839,3 +839,17 @@ a{
     grid-template-columns: 1fr;
   }
 }
+
+
+/* HOSE Deer Merge + Score Feedback */
+#mergeDeerModal select,
+#scoreFeedbackModal select,
+#scoreFeedbackModal input,
+#scoreFeedbackModal textarea {
+  width: 100%;
+}
+
+#mergeDeerModal .button-row,
+#scoreFeedbackModal .button-row {
+  margin-top: 12px;
+}

@@ -1809,6 +1809,22 @@ function renderDeerProfiles() {
                 >
                   Edit Profile
                 </button>
+
+                <button
+                  class="secondary mini"
+                  type="button"
+                  onclick="openMergeDeer('${deer.id}')"
+                >
+                  Merge
+                </button>
+
+                <button
+                  class="secondary mini"
+                  type="button"
+                  onclick="openScoreFeedback('${deer.id}')"
+                >
+                  Score Feedback
+                </button>
               </div>
 
             </div>
@@ -1905,6 +1921,233 @@ function renderDeerProfiles() {
     .join("");
 
   renderTargetBuckSelector();
+}
+
+
+
+function ensureMergeDeerUi() {
+  if ($("mergeDeerModal")) {
+    return;
+  }
+
+  const modal =
+    document.createElement("div");
+
+  modal.id =
+    "mergeDeerModal";
+
+  modal.className =
+    "hose-modal hidden";
+
+  modal.innerHTML = `
+    <div class="hose-modal-backdrop"></div>
+
+    <article class="hose-modal-card">
+      <div class="card-heading">
+        <div>
+          <div class="eyebrow">Identity Correction</div>
+          <h3>Merge Deer Profiles</h3>
+        </div>
+
+        <button
+          id="closeMergeDeerBtn"
+          type="button"
+          class="secondary mini"
+        >
+          Close
+        </button>
+      </div>
+
+      <p class="small muted">
+        Use this when two HOSE profiles are actually the same deer. The selected destination profile is kept; sightings, identity evidence, tags and useful metadata are moved into it.
+      </p>
+
+      <input
+        id="mergeSourceDeerId"
+        type="hidden"
+      >
+
+      <label>
+        Merge this deer into
+        <select id="mergeDestinationDeer"></select>
+      </label>
+
+      <label class="reference-choice">
+        <input
+          id="mergeUseSourcePhoto"
+          type="checkbox"
+        >
+        Use the source deer's profile photo after merge
+      </label>
+
+      <div class="button-row">
+        <button
+          id="confirmMergeDeerBtn"
+          type="button"
+          class="primary"
+        >
+          Merge Profiles
+        </button>
+      </div>
+
+      <div
+        id="mergeDeerMessage"
+        class="small muted"
+      ></div>
+    </article>
+  `;
+
+  document.body.appendChild(
+    modal
+  );
+
+  $("closeMergeDeerBtn")
+    .addEventListener(
+      "click",
+      () =>
+        modal.classList.add("hidden")
+    );
+
+  modal
+    .querySelector(".hose-modal-backdrop")
+    .addEventListener(
+      "click",
+      () =>
+        modal.classList.add("hidden")
+    );
+
+  $("confirmMergeDeerBtn")
+    .addEventListener(
+      "click",
+      mergeDeerProfiles
+    );
+}
+
+
+function openMergeDeer(sourceDeerId) {
+  ensureMergeDeerUi();
+
+  const source =
+    deerProfiles.find(
+      deer =>
+        deer.id === sourceDeerId
+    );
+
+  if (!source) {
+    return;
+  }
+
+  const candidates =
+    deerProfiles.filter(
+      deer =>
+        deer.id !== sourceDeerId
+        &&
+        deer.property_id === source.property_id
+    );
+
+  $("mergeSourceDeerId").value =
+    sourceDeerId;
+
+  $("mergeDestinationDeer").innerHTML =
+    '<option value="">Choose the profile to keep…</option>'
+    +
+    candidates
+      .map(
+        deer =>
+          `<option value="${deer.id}">${escapeHtml(deer.nickname || deer.deer_code || "Unnamed deer")}</option>`
+      )
+      .join("");
+
+  $("mergeUseSourcePhoto").checked =
+    false;
+
+  $("mergeDeerMessage").textContent =
+    `Source: ${source.nickname || source.deer_code || "Unnamed deer"}.`;
+
+  $("mergeDeerModal")
+    .classList
+    .remove("hidden");
+}
+
+
+async function mergeDeerProfiles() {
+  const sourceId =
+    $("mergeSourceDeerId").value;
+
+  const destinationId =
+    $("mergeDestinationDeer").value;
+
+  if (
+    !sourceId ||
+    !destinationId
+  ) {
+    $("mergeDeerMessage").textContent =
+      "Choose the deer profile you want to keep.";
+    return;
+  }
+
+  $("mergeDeerMessage").textContent =
+    "Merging profiles…";
+
+  try {
+    const {
+      data,
+      error
+    } =
+      await sb.functions.invoke(
+        "process-deer-photo",
+        {
+          body: {
+            action:
+              "merge_deer_profiles",
+
+            source_deer_profile_id:
+              sourceId,
+
+            destination_deer_profile_id:
+              destinationId,
+
+            use_source_reference_photo:
+              $("mergeUseSourcePhoto").checked
+          }
+        }
+      );
+
+    if (error) {
+      throw error;
+    }
+
+    if (data?.ok === false) {
+      throw new Error(
+        data.error ||
+        "Could not merge deer profiles."
+      );
+    }
+
+    await Promise.all([
+      loadDeerProfiles(),
+      loadSightings()
+    ]);
+
+    renderDeerProfiles();
+
+    $("mergeDeerMessage").textContent =
+      "Profiles merged successfully.";
+
+    setTimeout(
+      () =>
+        $("mergeDeerModal")
+          .classList
+          .add("hidden"),
+      450
+    );
+
+  } catch (error) {
+    $("mergeDeerMessage").textContent =
+      error?.message
+      ||
+      String(error);
+  }
 }
 
 
@@ -2802,6 +3045,265 @@ async function setProfileReferencePhoto(
 
   $("identityEvidenceMessage").textContent =
     "Profile photo updated.";
+}
+
+
+
+function ensureScoreFeedbackUi() {
+  if ($("scoreFeedbackModal")) {
+    return;
+  }
+
+  const modal =
+    document.createElement("div");
+
+  modal.id =
+    "scoreFeedbackModal";
+
+  modal.className =
+    "hose-modal hidden";
+
+  modal.innerHTML = `
+    <div class="hose-modal-backdrop"></div>
+
+    <article class="hose-modal-card">
+      <div class="card-heading">
+        <div>
+          <div class="eyebrow">Scoring Calibration</div>
+          <h3>Score Feedback</h3>
+        </div>
+
+        <button
+          id="closeScoreFeedbackBtn"
+          type="button"
+          class="secondary mini"
+        >
+          Close
+        </button>
+      </div>
+
+      <input
+        id="scoreFeedbackDeerId"
+        type="hidden"
+      >
+
+      <div id="scoreFeedbackCurrent" class="profile-score-box"></div>
+
+      <label>
+        How was HOSE's estimate?
+        <select id="scoreFeedbackRating">
+          <option value="">Choose feedback…</option>
+          <option value="accurate">Pretty accurate</option>
+          <option value="slightly_high">Slightly too high</option>
+          <option value="much_too_high">Much too high</option>
+          <option value="slightly_low">Slightly too low</option>
+          <option value="much_too_low">Much too low</option>
+          <option value="not_scoreable">Should not have been scored</option>
+        </select>
+      </label>
+
+      <label>
+        Your corrected estimate / known gross score
+        <input
+          id="scoreFeedbackCorrected"
+          type="number"
+          min="0"
+          step=".25"
+          placeholder="Example: 20 or 142.5"
+        >
+      </label>
+
+      <label>
+        Notes
+        <textarea
+          id="scoreFeedbackNotes"
+          rows="3"
+          placeholder="Example: spike buck, only ~10 inch spikes; AI badly overestimated tine/beam length."
+        ></textarea>
+      </label>
+
+      <div class="button-row">
+        <button
+          id="saveScoreFeedbackBtn"
+          type="button"
+          class="primary"
+        >
+          Save Feedback
+        </button>
+      </div>
+
+      <div
+        id="scoreFeedbackMessage"
+        class="small muted"
+      ></div>
+    </article>
+  `;
+
+  document.body.appendChild(
+    modal
+  );
+
+  $("closeScoreFeedbackBtn")
+    .addEventListener(
+      "click",
+      () =>
+        modal.classList.add("hidden")
+    );
+
+  modal
+    .querySelector(".hose-modal-backdrop")
+    .addEventListener(
+      "click",
+      () =>
+        modal.classList.add("hidden")
+    );
+
+  $("saveScoreFeedbackBtn")
+    .addEventListener(
+      "click",
+      saveScoreFeedback
+    );
+}
+
+
+function openScoreFeedback(deerId) {
+  ensureScoreFeedbackUi();
+
+  const deer =
+    deerProfiles.find(
+      row =>
+        row.id === deerId
+    );
+
+  if (!deer) {
+    return;
+  }
+
+  $("scoreFeedbackDeerId").value =
+    deer.id;
+
+  $("scoreFeedbackRating").value =
+    "";
+
+  $("scoreFeedbackCorrected").value =
+    deer.user_estimated_score
+    ?? "";
+
+  $("scoreFeedbackNotes").value =
+    "";
+
+  $("scoreFeedbackCurrent").innerHTML = `
+    <div>
+      <div class="small muted">Current HOSE estimate</div>
+      <strong>
+        ${
+          deer.ai_score_estimate != null
+            ? `${Number(deer.ai_score_estimate).toFixed(1)}"`
+            : "No score"
+        }
+      </strong>
+      ${
+        deer.ai_score_range_low != null &&
+        deer.ai_score_range_high != null
+          ? `<span>${Number(deer.ai_score_range_low).toFixed(0)}–${Number(deer.ai_score_range_high).toFixed(0)}"</span>`
+          : ""
+      }
+    </div>
+  `;
+
+  $("scoreFeedbackMessage").textContent =
+    "";
+
+  $("scoreFeedbackModal")
+    .classList
+    .remove("hidden");
+}
+
+
+async function saveScoreFeedback() {
+  const deerId =
+    $("scoreFeedbackDeerId").value;
+
+  const rating =
+    $("scoreFeedbackRating").value;
+
+  if (!deerId || !rating) {
+    $("scoreFeedbackMessage").textContent =
+      "Choose a feedback rating.";
+    return;
+  }
+
+  const correctedValue =
+    $("scoreFeedbackCorrected").value;
+
+  const correctedScore =
+    correctedValue
+      ? Number(correctedValue)
+      : null;
+
+  $("scoreFeedbackMessage").textContent =
+    "Saving feedback…";
+
+  const {
+    error
+  } =
+    await sb
+      .from("deer_score_feedback")
+      .insert({
+        user_id:
+          currentUser.id,
+
+        deer_profile_id:
+          deerId,
+
+        ai_score_estimate:
+          deerProfiles.find(
+            row =>
+              row.id === deerId
+          )?.ai_score_estimate
+          ?? null,
+
+        feedback_rating:
+          rating,
+
+        corrected_score:
+          correctedScore,
+
+        notes:
+          $("scoreFeedbackNotes").value.trim()
+          || null
+      });
+
+  if (error) {
+    $("scoreFeedbackMessage").textContent =
+      error.message;
+    return;
+  }
+
+  if (correctedScore != null) {
+    await sb
+      .from("deer_profiles")
+      .update({
+        user_estimated_score:
+          correctedScore
+      })
+      .eq("id", deerId)
+      .eq("user_id", currentUser.id);
+  }
+
+  await loadDeerProfiles();
+  renderDeerProfiles();
+
+  $("scoreFeedbackMessage").textContent =
+    "Feedback saved.";
+
+  setTimeout(
+    () =>
+      $("scoreFeedbackModal")
+        .classList
+        .add("hidden"),
+    400
+  );
 }
 
 
@@ -5310,6 +5812,12 @@ window.openIdentityEvidence =
 
 window.setProfileReferencePhoto =
   setProfileReferencePhoto;
+
+window.openMergeDeer =
+  openMergeDeer;
+
+window.openScoreFeedback =
+  openScoreFeedback;
 
 
 window.addEventListener(
