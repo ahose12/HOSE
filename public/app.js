@@ -506,6 +506,100 @@ function topLevelTabBlock(
 }
 
 
+
+function makeDeerProfilePrimary() {
+  const myTab =
+    $("tab-my-intel");
+
+  const areaTab =
+    $("tab-area-intel");
+
+  const deerCards =
+    $("deerCards");
+
+  if (
+    !myTab ||
+    !deerCards
+  ) {
+    return;
+  }
+
+  const deerBlock =
+    topLevelTabBlock(
+      deerCards,
+      myTab
+    );
+
+  if (
+    !deerBlock
+  ) {
+    return;
+  }
+
+  deerBlock.classList.add(
+    "deer-primary-block",
+    "deer-main-stage"
+  );
+
+  /*
+   * Put the deer profile at the very top of Tab 1.
+   */
+  myTab.prepend(
+    deerBlock
+  );
+
+  /*
+   * If the old My Cameras block still exists in Tab 1,
+   * move that entire block to Area Intelligence so the deer
+   * profile owns the broad primary region instead of sharing it.
+   */
+  const cameraCards =
+    $("cameraCards");
+
+  const cameraBlock =
+    cameraCards
+      ? topLevelTabBlock(
+          cameraCards,
+          myTab
+        )
+      : null;
+
+  if (
+    cameraBlock &&
+    cameraBlock !== deerBlock &&
+    areaTab
+  ) {
+    let setupHost =
+      $("areaSetupHost");
+
+    if (!setupHost) {
+      setupHost =
+        document.createElement(
+          "section"
+        );
+
+      setupHost.id =
+        "areaSetupHost";
+
+      setupHost.className =
+        "area-setup-host";
+
+      areaTab.prepend(
+        setupHost
+      );
+    }
+
+    cameraBlock.classList.add(
+      "area-moved-setup-block"
+    );
+
+    setupHost.appendChild(
+      cameraBlock
+    );
+  }
+}
+
+
 function moveSetupToAreaIntelligence() {
   const myTab =
     $("tab-my-intel");
@@ -1174,23 +1268,9 @@ function ensureHoseFourTabLayout() {
   }
 
   /*
-   * Deer Intelligence is first and full width.
+   * Deer Intelligence is first and owns the broad main content region.
    */
-  const deerBlock =
-    topLevelTabBlock(
-      $("deerCards"),
-      myTab
-    );
-
-  if (deerBlock) {
-    deerBlock.classList.add(
-      "deer-primary-block"
-    );
-
-    myTab.prepend(
-      deerBlock
-    );
-  }
+  makeDeerProfilePrimary();
 
   /*
    * Create Hunt Your Buck between Area Intelligence and Public Land.
@@ -1320,7 +1400,7 @@ function ensureHuntYourBuckUi() {
           </h1>
 
           <p class="muted">
-            Select a Target buck and HOSE will bring its identity, sightings, camera pattern, mapped stands, wind and forecast together into one hunt decision.
+            Only deer you explicitly tag as Target appear here. HOSE brings that buck's identity, sightings, camera pattern, mapped stands, wind and forecast together into one hunt decision.
           </p>
         </div>
       </section>
@@ -1847,6 +1927,7 @@ function setupTabs() {
               selected ===
               "my-intel"
             ) {
+              makeDeerProfilePrimary();
               renderDeerProfiles();
             }
 
@@ -5635,6 +5716,13 @@ function renderTargetBuckSelector() {
             deer,
             "Target"
           )
+      )
+      .filter(
+        deer =>
+          !hasProfileTag(
+            deer,
+            "Harvested"
+          )
       );
 
   const previous =
@@ -5670,7 +5758,7 @@ function renderTargetBuckSelector() {
   if ($("targetPlanMessage")) {
     if (!targets.length) {
       $("targetPlanMessage").textContent =
-        "No Target-tagged bucks are saved for this property yet.";
+        "No active Target-tagged bucks are available yet. Mark a deer as Target in Deer Intelligence first.";
     } else {
       $("targetPlanMessage").textContent =
         `${targets.length} Target buck${targets.length === 1 ? "" : "s"} available for hunt planning.`;
@@ -7775,6 +7863,7 @@ async function init() {
     ensureHoseFourTabLayout();
     setupTabs();
 
+    makeDeerProfilePrimary();
     moveSetupToAreaIntelligence();
     ensureStandMetadataControls();
 

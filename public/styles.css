@@ -1770,3 +1770,157 @@ a{
     text-align: left;
   }
 }
+
+
+/* ============================================================
+   HOSE RETRY — PRIMARY DEER LAYOUT
+   ============================================================ */
+
+/*
+ * Tab 1 should read as one primary deer dashboard, not a two-column admin
+ * layout. The deer section owns the full main content region.
+ */
+#tab-my-intel {
+  display: block !important;
+  width: 100% !important;
+}
+
+#tab-my-intel.hidden {
+  display: none !important;
+}
+
+#tab-my-intel .deer-main-stage,
+#tab-my-intel .deer-primary-block,
+#tab-my-intel #deerCards,
+#tab-my-intel .deer-focus-shell,
+#tab-my-intel .deer-stack-card {
+  display: block;
+  width: 100% !important;
+  max-width: none !important;
+  grid-column: 1 / -1 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+#tab-my-intel .deer-primary-block {
+  order: -1000;
+  margin-top: 0 !important;
+  margin-bottom: 18px !important;
+}
+
+/*
+ * "Full width" means fill the content region, not fill the whole monitor
+ * vertically. Keep the complete image + key metadata understandable at once.
+ */
+#tab-my-intel .deer-image-panel {
+  width: 100% !important;
+  min-height: 0 !important;
+}
+
+#tab-my-intel .deer-stack-image {
+  width: 100% !important;
+  height: clamp(320px, 43vh, 470px) !important;
+}
+
+#tab-my-intel .deer-stack-image img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+  background: #070b08;
+}
+
+#tab-my-intel .deer-stack-image .deer-focus-image-empty {
+  height: clamp(320px, 43vh, 470px) !important;
+  min-height: 0 !important;
+}
+
+#tab-my-intel .deer-metadata-panel {
+  padding: 16px 20px 18px !important;
+}
+
+#tab-my-intel .deer-meta-name-row h1 {
+  font-size: clamp(1.8rem, 3vw, 2.8rem) !important;
+}
+
+#tab-my-intel .deer-meta-grid {
+  margin-top: 12px !important;
+}
+
+#tab-my-intel .deer-meta-grid > div {
+  padding: 10px 12px !important;
+}
+
+/*
+ * Compare remains a true 50/50 split across the same broad content region.
+ */
+#tab-my-intel .deer-compare-grid {
+  width: 100% !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  gap: 12px !important;
+}
+
+#tab-my-intel .deer-compare-image {
+  height: clamp(250px, 34vh, 360px) !important;
+  aspect-ratio: auto !important;
+}
+
+#tab-my-intel .deer-compare-image img {
+  object-fit: contain !important;
+}
+
+
+/* ============================================================
+   HUNT YOUR BUCK — TARGET ONLY / SMALLER PHOTO
+   ============================================================ */
+
+#tab-hunt-buck .hunt-buck-profile-card {
+  grid-template-columns: minmax(190px, 300px) minmax(0, 1fr) !important;
+  align-items: stretch;
+}
+
+#tab-hunt-buck .hunt-buck-profile-image {
+  min-height: 0 !important;
+  height: 260px !important;
+  max-height: 260px !important;
+}
+
+#tab-hunt-buck .hunt-buck-profile-image img {
+  width: 100% !important;
+  height: 260px !important;
+  min-height: 0 !important;
+  max-height: 260px !important;
+  object-fit: contain !important;
+}
+
+#tab-hunt-buck .hunt-buck-profile-image .deer-focus-image-empty {
+  height: 260px !important;
+  min-height: 260px !important;
+}
+
+#tab-hunt-buck .hunt-buck-profile-data {
+  justify-content: flex-start !important;
+}
+
+#tab-hunt-buck .hunt-buck-title-row h2 {
+  font-size: clamp(1.8rem, 3vw, 2.7rem) !important;
+}
+
+#tab-hunt-buck .hunt-buck-metrics {
+  margin-top: 12px !important;
+}
+
+@media(max-width: 800px) {
+  #tab-hunt-buck .hunt-buck-profile-card {
+    grid-template-columns: 1fr !important;
+  }
+
+  #tab-hunt-buck .hunt-buck-profile-image,
+  #tab-hunt-buck .hunt-buck-profile-image img {
+    height: 240px !important;
+    max-height: 240px !important;
+  }
+
+  #tab-my-intel .deer-compare-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
