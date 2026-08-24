@@ -1610,34 +1610,14 @@ function syncAreaSelectors() {
     }
   }
 
-  if (
-    areaMap &&
-    propertyLocated
-  ) {
-    const hasMappedCamera =
-      cams.some(
-        c =>
-          Number.isFinite(Number(c.lat)) &&
-          Number.isFinite(Number(c.lon))
-      );
-
-    const hasMappedStand =
-      propertyStands.some(
-        s =>
-          Number.isFinite(Number(s.lat)) &&
-          Number.isFinite(Number(s.lon))
-      );
-
-    if (!hasMappedCamera && !hasMappedStand) {
-      areaMap.setView(
-        [
-          Number(selectedProperty.lat),
-          Number(selectedProperty.lon)
-        ],
-        17
-      );
-    }
-  }
+  /*
+   * IMPORTANT:
+   * Property selection only updates the selected property's controls.
+   * It does NOT move, recreate, hide, or re-zoom the map.
+   *
+   * This keeps the currently visible map intact when switching between
+   * saved properties.
+   */
 }
 
 function propertyMapIcon() {
@@ -1755,11 +1735,10 @@ function renderAreaMap() {
     bounds.push([Number(s.lat), Number(s.lon)]);
   });
 
-  if (bounds.length === 1 && selectedProperty) {
-    areaMap.setView(bounds[0], 17);
-  } else if (bounds.length > 1) {
-    areaMap.fitBounds(bounds, { padding: [40,40], maxZoom: 17 });
-  }
+  /*
+   * Marker rendering must not change the user's current map view.
+   * We intentionally do not call setView() or fitBounds() here.
+   */
 
   const propertySightings = sightings.filter(s => s.property_id === propertyId);
   $("areaCameraCount").textContent = cams.filter(c => c.lat != null && c.lon != null).length;
@@ -2858,7 +2837,7 @@ async function init() {
       $("mapProperty")
         .addEventListener(
           "change",
-          async () => {
+          () => {
             const propertyId =
               $("mapProperty").value;
 
@@ -2873,41 +2852,24 @@ async function init() {
               );
             }
 
-            try {
-              await reloadAreaIntelligenceData();
+            /*
+             * DO NOT reload/recreate the map or force a new map view here.
+             * The Area tab already loaded fresh Supabase data when it opened.
+             */
+            syncAreaSelectors();
+            renderAreaMap();
 
-              if (
-                propertyId &&
-                properties.some(
-                  p =>
-                    p.id === propertyId
-                )
-              ) {
-                $("mapProperty").value =
-                  propertyId;
+            /*
+             * Leaflet can need a size refresh after UI updates, but this
+             * does not move the current center or zoom.
+             */
+            requestAnimationFrame(
+              () => {
+                areaMap?.invalidateSize({
+                  pan: false
+                });
               }
-
-              syncAreaSelectors();
-              renderAreaMap();
-
-              setTimeout(
-                () =>
-                  areaMap?.invalidateSize(),
-                100
-              );
-
-            } catch (error) {
-              console.error(
-                "HOSE Area property change error:",
-                error
-              );
-
-              if ($("placementMessage")) {
-                $("placementMessage").textContent =
-                  error?.message ||
-                  "Could not load Area Intelligence.";
-              }
-            }
+            );
           }
         );
     }
