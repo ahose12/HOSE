@@ -4548,7 +4548,7 @@ async function uploadPhotos() {
       }
 
       const path =
-        `${currentUser.id}/${propertyId}/${cameraId}/${fileId}-${safeFileName(file.name)}`;
+        `${currentUser.id}/${photoPropertyId}/${photoCameraId}/${fileId}-${safeFileName(file.name)}`;
 
       const {
         error: uploadError
@@ -4590,14 +4590,10 @@ async function uploadPhotos() {
               currentUser.id,
 
             property_id:
-              metadata.property_id
-              ||
-              batchPropertyId,
+              photoPropertyId,
 
             camera_id:
-              metadata.camera_id
-              ||
-              batchCameraId,
+              photoCameraId,
 
             storage_path:
               path,
@@ -4698,14 +4694,15 @@ async function uploadPhotos() {
 
       failed++;
 
+      window.hoseLastUploadError =
+        error?.message
+        ||
+        String(error);
+
       $("uploadProgress").textContent =
         `Problem with ${file.name}: `
         +
-        (
-          error?.message
-          ||
-          String(error)
-        );
+        window.hoseLastUploadError;
     }
   }
 
@@ -4741,6 +4738,12 @@ async function uploadPhotos() {
     (
       failed
         ? `, ${failed} failed.`
+          +
+          (
+            window.hoseLastUploadError
+              ? ` Last error: ${window.hoseLastUploadError}`
+              : ""
+          )
         : "."
     );
 }
