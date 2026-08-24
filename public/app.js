@@ -2938,8 +2938,559 @@ function renderHuntBuckContext() {
 }
 
 
+
+let uploadDefaults = {
+  default_property_id: null,
+  default_camera_id: null,
+  default_photo_tags: [],
+  default_prefer_reference: false
+};
+
+
+async function loadUploadDefaults() {
+  if (
+    !currentUser ||
+    !sb
+  ) {
+    return;
+  }
+
+  const {
+    data,
+    error
+  } =
+    await sb
+      .from("user_upload_settings")
+      .select("*")
+      .eq("user_id", currentUser.id)
+      .maybeSingle();
+
+  if (error) {
+    console.warn(
+      "Could not load upload defaults:",
+      error
+    );
+    return;
+  }
+
+  if (data) {
+    uploadDefaults = {
+      default_property_id:
+        data.default_property_id
+        || null,
+
+      default_camera_id:
+        data.default_camera_id
+        || null,
+
+      default_photo_tags:
+        data.default_photo_tags
+        || [],
+
+      default_prefer_reference:
+        Boolean(
+          data.default_prefer_reference
+        )
+    };
+  }
+}
+
+
+function camerasForUploadProperty(
+  propertyId
+) {
+  if (!propertyId) {
+    return cameras;
+  }
+
+  return cameras.filter(
+    camera =>
+      camera.property_id ===
+      propertyId
+  );
+}
+
+
+function perPhotoPropertyOptions(
+  selectedId = ""
+) {
+  return (
+    '<option value="">Choose property…</option>'
+    +
+    properties
+      .map(
+        property =>
+          `<option value="${property.id}" ${property.id === selectedId ? "selected" : ""}>${escapeHtml(property.name)}</option>`
+      )
+      .join("")
+  );
+}
+
+
+function perPhotoCameraOptions(
+  propertyId,
+  selectedId = ""
+) {
+  const rows =
+    camerasForUploadProperty(
+      propertyId
+    );
+
+  return (
+    '<option value="">Choose camera…</option>'
+    +
+    rows
+      .map(
+        camera =>
+          `<option value="${camera.id}" ${camera.id === selectedId ? "selected" : ""}>${escapeHtml(camera.name)}</option>`
+      )
+      .join("")
+  );
+}
+
+
+function updatePerPhotoCameraOptions(
+  index
+) {
+  const propertyId =
+    $(`metaProperty-${index}`)?.value
+    || "";
+
+  const cameraSelect =
+    $(`metaCamera-${index}`);
+
+  if (!cameraSelect) {
+    return;
+  }
+
+  const existing =
+    cameraSelect.value;
+
+  cameraSelect.innerHTML =
+    perPhotoCameraOptions(
+      propertyId,
+      existing
+    );
+
+  if (
+    !cameraSelect.value &&
+    uploadDefaults.default_camera_id
+  ) {
+    const defaultCamera =
+      cameras.find(
+        camera =>
+          camera.id ===
+          uploadDefaults.default_camera_id
+          &&
+          (
+            !propertyId
+            ||
+            camera.property_id ===
+            propertyId
+          )
+      );
+
+    if (defaultCamera) {
+      cameraSelect.value =
+        defaultCamera.id;
+    }
+  }
+}
+
+
+function applyUploadDefaultsToBatchSelectors() {
+  if (
+    uploadDefaults.default_property_id
+    &&
+    $("uploadProperty")
+  ) {
+    $("uploadProperty").value =
+      uploadDefaults.default_property_id;
+
+    renderCameraSelectors();
+  }
+
+  if (
+    uploadDefaults.default_camera_id
+    &&
+    $("uploadCamera")
+  ) {
+    const exists =
+      Array.from(
+        $("uploadCamera").options
+      )
+      .some(
+        option =>
+          option.value ===
+          uploadDefaults.default_camera_id
+      );
+
+    if (exists) {
+      $("uploadCamera").value =
+        uploadDefaults.default_camera_id;
+    }
+  }
+}
+
+
+function ensureAdvancedSettingsTab() {
+  if (
+    $("tab-advanced-settings")
+  ) {
+    return;
+  }
+
+  const exploreTab =
+    $("tab-explore-plan");
+
+  const navButtons =
+    document.querySelectorAll(
+      ".app-tab"
+    );
+
+  const lastButton =
+    navButtons[
+      navButtons.length - 1
+    ];
+
+  const settingsButton =
+    document.createElement(
+      "button"
+    );
+
+  settingsButton.type =
+    "button";
+
+  settingsButton.className =
+    "app-tab";
+
+  settingsButton.dataset.tab =
+    "advanced-settings";
+
+  settingsButton.textContent =
+    "⚙️ Advanced Settings";
+
+  if (
+    lastButton &&
+    lastButton.parentElement
+  ) {
+    lastButton.parentElement
+      .appendChild(
+        settingsButton
+      );
+  }
+
+  const panel =
+    document.createElement(
+      "section"
+    );
+
+  panel.id =
+    "tab-advanced-settings";
+
+  panel.className =
+    "private-tab-panel hidden";
+
+  panel.innerHTML = `
+    <section class="advanced-settings-page">
+
+      <div class="advanced-settings-heading">
+        <div>
+          <div class="eyebrow">
+            Preferences
+          </div>
+
+          <h1>
+            Advanced Settings
+          </h1>
+
+          <p class="muted">
+            Advanced HOSE preferences and future account-wide controls. Import property/camera behavior is handled directly in the upload workflow.
+          </p>
+        </div>
+      </div>
+
+      <article class="intel-card advanced-import-defaults-hidden">
+
+        <div class="card-heading">
+          <div>
+            <div class="eyebrow">
+              Upload Defaults
+            </div>
+
+            <h3>
+              Default Photo Context
+            </h3>
+          </div>
+        </div>
+
+        <div class="advanced-settings-grid">
+
+          <label>
+            Default property
+            <select id="settingsDefaultProperty">
+              <option value="">No default</option>
+            </select>
+          </label>
+
+          <label>
+            Default camera
+            <select id="settingsDefaultCamera">
+              <option value="">No default</option>
+            </select>
+          </label>
+
+          <label class="advanced-settings-wide">
+            Default photo tags
+            <input
+              id="settingsDefaultTags"
+              placeholder="Example: scrape, daylight, field edge"
+            >
+          </label>
+
+          <label class="reference-choice advanced-settings-wide">
+            <input
+              id="settingsPreferReference"
+              type="checkbox"
+            >
+            Prefer uploaded photos as profile/reference images by default
+          </label>
+
+        </div>
+
+        <div class="button-row">
+          <button
+            id="saveAdvancedSettingsBtn"
+            type="button"
+            class="primary"
+          >
+            Save Defaults
+          </button>
+        </div>
+
+        <div
+          id="advancedSettingsMessage"
+          class="small muted"
+        ></div>
+
+      </article>
+
+      <article class="intel-card">
+        <div class="eyebrow">
+          Bulk Import Behavior
+        </div>
+
+        <h3>
+          Photo-by-Photo Overrides
+        </h3>
+
+        <p class="small muted">
+          During every bulk upload, each picture gets its own Property, Camera, Known Deer, capture time, notes and tags before HOSE sends it to AI.
+        </p>
+      </article>
+
+    </section>
+  `;
+
+  if (exploreTab) {
+    exploreTab.insertAdjacentElement(
+      "afterend",
+      panel
+    );
+  } else {
+    document.body.appendChild(
+      panel
+    );
+  }
+
+  $("settingsDefaultProperty")
+    .addEventListener(
+      "change",
+      renderAdvancedSettingsCameraOptions
+    );
+
+  $("saveAdvancedSettingsBtn")
+    .addEventListener(
+      "click",
+      saveAdvancedSettings
+    );
+}
+
+
+function renderAdvancedSettings() {
+  ensureAdvancedSettingsTab();
+
+  const propertySelect =
+    $("settingsDefaultProperty");
+
+  if (!propertySelect) {
+    return;
+  }
+
+  propertySelect.innerHTML =
+    '<option value="">No default</option>'
+    +
+    properties
+      .map(
+        property =>
+          `<option value="${property.id}">${escapeHtml(property.name)}</option>`
+      )
+      .join("");
+
+  propertySelect.value =
+    uploadDefaults.default_property_id
+    || "";
+
+  renderAdvancedSettingsCameraOptions();
+
+  $("settingsDefaultTags").value =
+    (
+      uploadDefaults.default_photo_tags
+      || []
+    )
+    .join(", ");
+
+  $("settingsPreferReference").checked =
+    Boolean(
+      uploadDefaults.default_prefer_reference
+    );
+}
+
+
+function renderAdvancedSettingsCameraOptions() {
+  const propertyId =
+    $("settingsDefaultProperty")?.value
+    || "";
+
+  const cameraSelect =
+    $("settingsDefaultCamera");
+
+  if (!cameraSelect) {
+    return;
+  }
+
+  const rows =
+    propertyId
+      ? cameras.filter(
+          camera =>
+            camera.property_id ===
+            propertyId
+        )
+      : cameras;
+
+  cameraSelect.innerHTML =
+    '<option value="">No default</option>'
+    +
+    rows
+      .map(
+        camera =>
+          `<option value="${camera.id}">${escapeHtml(camera.name)}</option>`
+      )
+      .join("");
+
+  const desired =
+    uploadDefaults.default_camera_id
+    || "";
+
+  if (
+    Array.from(
+      cameraSelect.options
+    )
+    .some(
+      option =>
+        option.value ===
+        desired
+    )
+  ) {
+    cameraSelect.value =
+      desired;
+  }
+}
+
+
+async function saveAdvancedSettings() {
+  const propertyId =
+    $("settingsDefaultProperty").value
+    || null;
+
+  const cameraId =
+    $("settingsDefaultCamera").value
+    || null;
+
+  const tags =
+    parseTags(
+      $("settingsDefaultTags").value
+    );
+
+  const preferReference =
+    Boolean(
+      $("settingsPreferReference").checked
+    );
+
+  $("advancedSettingsMessage").textContent =
+    "Saving…";
+
+  const {
+    error
+  } =
+    await sb
+      .from("user_upload_settings")
+      .upsert(
+        {
+          user_id:
+            currentUser.id,
+
+          default_property_id:
+            propertyId,
+
+          default_camera_id:
+            cameraId,
+
+          default_photo_tags:
+            tags,
+
+          default_prefer_reference:
+            preferReference,
+
+          updated_at:
+            new Date().toISOString()
+        },
+        {
+          onConflict:
+            "user_id"
+        }
+      );
+
+  if (error) {
+    $("advancedSettingsMessage").textContent =
+      error.message;
+    return;
+  }
+
+  uploadDefaults = {
+    default_property_id:
+      propertyId,
+
+    default_camera_id:
+      cameraId,
+
+    default_photo_tags:
+      tags,
+
+    default_prefer_reference:
+      preferReference
+  };
+
+  applyUploadDefaultsToBatchSelectors();
+
+  $("advancedSettingsMessage").textContent =
+    "Defaults saved.";
+}
+
+
 function setupTabs() {
   ensureHoseFourTabLayout();
+  ensureAdvancedSettingsTab();
 
   document
     .querySelectorAll(
@@ -3001,6 +3552,14 @@ function setupTabs() {
                 "explore-plan"
               );
 
+            $("tab-advanced-settings")
+              ?.classList
+              .toggle(
+                "hidden",
+                selected !==
+                "advanced-settings"
+              );
+
 
             if (
               selected ===
@@ -3046,6 +3605,15 @@ function setupTabs() {
               ensureHuntYourBuckUi();
               renderTargetBuckSelector();
               renderHuntBuckContext();
+            }
+
+
+            if (
+              selected ===
+              "advanced-settings"
+            ) {
+              await loadUploadDefaults();
+              renderAdvancedSettings();
             }
 
 
@@ -3097,7 +3665,11 @@ async function refreshPrivateData() {
   });
 
   try {
+    await loadUploadDefaults();
+
     renderPrivate();
+    applyUploadDefaultsToBatchSelectors();
+    renderAdvancedSettings();
     ensureDeerIntelligenceHome();
     renderFirstTabIntelligence();
   } catch (error) {
@@ -3568,7 +4140,44 @@ function knownDeerOptions(propertyId) {
 }
 
 
+
+let importUsesSameContext = true;
+
+
+function ensureImportContextToggle() {
+  const uploadProperty = $("uploadProperty");
+  if (!uploadProperty || $("importContextToggle")) return;
+
+  const wrap = document.createElement("div");
+  wrap.id = "importContextToggle";
+  wrap.className = "import-context-toggle";
+  wrap.innerHTML = `
+    <div class="import-context-question">
+      Are all pictures from the same property and camera?
+    </div>
+    <label class="import-context-option">
+      <input type="radio" name="importContextMode" value="same" checked>
+      <span>Yes — use one property & camera</span>
+    </label>
+    <label class="import-context-option">
+      <input type="radio" name="importContextMode" value="different">
+      <span>No — assign each photo</span>
+    </label>
+  `;
+
+  const field = uploadProperty.parentElement;
+  if (field) field.insertAdjacentElement("beforebegin", wrap);
+
+  wrap.querySelectorAll('input[name="importContextMode"]').forEach(radio => {
+    radio.addEventListener("change", () => {
+      importUsesSameContext = radio.value === "same";
+      renderSelectedPreviews(Array.from($("photoUpload")?.files || []));
+    });
+  });
+}
+
 function renderSelectedPreviews(files) {
+  ensureImportContextToggle();
   const section =
     $("photoPreviewSection");
 
@@ -3601,6 +4210,20 @@ function renderSelectedPreviews(files) {
       pendingPhotoMetadata.set(
         index,
         {
+          property_id:
+            uploadDefaults.default_property_id
+            ||
+            $("uploadProperty")?.value
+            ||
+            null,
+
+          camera_id:
+            uploadDefaults.default_camera_id
+            ||
+            $("uploadCamera")?.value
+            ||
+            null,
+
           captured_at:
             captureValue,
 
@@ -3611,7 +4234,8 @@ function renderSelectedPreviews(files) {
             "",
 
           photo_tags:
-            []
+            uploadDefaults.default_photo_tags
+            || []
         }
       );
 
@@ -3635,6 +4259,44 @@ function renderSelectedPreviews(files) {
           Review before AI
         </div>
 
+        <div class="metadata-context-grid ${importUsesSameContext ? "same-import-context-hidden" : ""}">
+
+          <label class="metadata-field">
+            Property
+            <select
+              id="metaProperty-${index}"
+              onchange="updatePerPhotoCameraOptions(${index})"
+            >
+              ${perPhotoPropertyOptions(
+                $("uploadProperty")?.value
+                ||
+                uploadDefaults.default_property_id
+                ||
+                ""
+              )}
+            </select>
+          </label>
+
+          <label class="metadata-field">
+            Camera
+            <select id="metaCamera-${index}">
+              ${perPhotoCameraOptions(
+                $("uploadProperty")?.value
+                ||
+                uploadDefaults.default_property_id
+                ||
+                "",
+                $("uploadCamera")?.value
+                ||
+                uploadDefaults.default_camera_id
+                ||
+                ""
+              )}
+            </select>
+          </label>
+
+        </div>
+
         <label class="metadata-field">
           Known deer
           <select id="metaKnownDeer-${index}">
@@ -3647,6 +4309,7 @@ function renderSelectedPreviews(files) {
           <input
             id="metaPreferReference-${index}"
             type="checkbox"
+            ${uploadDefaults.default_prefer_reference ? "checked" : ""}
           >
           Use this as the profile/reference photo if assigned or confirmed
         </label>
@@ -3682,6 +4345,7 @@ function renderSelectedPreviews(files) {
           Photo tags
           <input
             id="metaTags-${index}"
+            value="${escapeHtml((uploadDefaults.default_photo_tags || []).join(", "))}"
             placeholder="scrape, daylight, field edge"
           >
         </label>
@@ -3722,6 +4386,16 @@ function getPendingPhotoMetadata(index, file) {
     );
 
   return {
+    property_id:
+      importUsesSameContext
+        ? ($("uploadProperty")?.value || null)
+        : ($(`metaProperty-${index}`)?.value || null),
+
+    camera_id:
+      importUsesSameContext
+        ? ($("uploadCamera")?.value || null)
+        : ($(`metaCamera-${index}`)?.value || null),
+
     captured_at:
       capturedValue
         ? new Date(capturedValue).toISOString()
@@ -3756,22 +4430,18 @@ function getPendingPhotoMetadata(index, file) {
 
 
 async function uploadPhotos() {
-  const propertyId =
-    $("uploadProperty").value;
+  const batchPropertyId =
+    $("uploadProperty")?.value
+    || null;
 
-  const cameraId =
-    $("uploadCamera").value;
+  const batchCameraId =
+    $("uploadCamera")?.value
+    || null;
 
   const files =
     Array.from(
       $("photoUpload").files
     );
-
-  if (!propertyId || !cameraId) {
-    $("uploadProgress").textContent =
-      "Choose both a property and camera.";
-    return;
-  }
 
   if (!files.length) {
     $("uploadProgress").textContent =
@@ -3804,6 +4474,50 @@ async function uploadPhotos() {
           i,
           file
         );
+
+      const photoPropertyId =
+        metadata.property_id
+        ||
+        batchPropertyId;
+
+      const photoCameraId =
+        metadata.camera_id
+        ||
+        batchCameraId;
+
+      if (
+        !photoPropertyId
+        ||
+        !photoCameraId
+      ) {
+        throw new Error(
+          `Choose a property and camera for ${file.name}.`
+        );
+      }
+
+      const cameraBelongsToProperty =
+        cameras.some(
+          camera =>
+            camera.id ===
+            photoCameraId
+            &&
+            camera.property_id ===
+            photoPropertyId
+        );
+
+      if (
+        !cameraBelongsToProperty
+      ) {
+        throw new Error(
+          `The selected camera for ${file.name} does not belong to the selected property.`
+        );
+      }
+
+      metadata.property_id =
+        photoPropertyId;
+
+      metadata.camera_id =
+        photoCameraId;
 
       $("uploadProgress").textContent =
         `Checking ${i + 1} of ${files.length} for duplicates: ${file.name}`;
@@ -3876,10 +4590,14 @@ async function uploadPhotos() {
               currentUser.id,
 
             property_id:
-              propertyId,
+              metadata.property_id
+              ||
+              batchPropertyId,
 
             camera_id:
-              cameraId,
+              metadata.camera_id
+              ||
+              batchCameraId,
 
             storage_path:
               path,
@@ -9630,6 +10348,9 @@ async function init() {
   try {
     ensureHoseFourTabLayout();
     setupTabs();
+
+    await loadUploadDefaults();
+    ensureAdvancedSettingsTab();
 
     makeDeerProfilePrimary();
     moveSetupToAreaIntelligence();

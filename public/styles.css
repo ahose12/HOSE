@@ -2584,3 +2584,86 @@ a{
     flex-direction: column;
   }
 }
+
+
+/* ============================================================
+   PER-PHOTO BULK IMPORT CONTEXT
+   ============================================================ */
+
+.metadata-context-grid {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(0, 1fr);
+  gap: 8px;
+}
+
+.metadata-context-grid select {
+  width: 100%;
+}
+
+.advanced-settings-page {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+}
+
+.advanced-settings-heading h1 {
+  margin: 4px 0 6px;
+  font-size: clamp(2rem, 5vw, 3.8rem);
+}
+
+.advanced-settings-grid {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(0, 1fr);
+  gap: 12px;
+}
+
+.advanced-settings-wide {
+  grid-column: 1 / -1;
+}
+
+@media(max-width: 650px) {
+  .metadata-context-grid,
+  .advanced-settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .advanced-settings-wide {
+    grid-column: auto;
+  }
+}
+
+.import-context-toggle {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px 16px;
+  padding:12px;
+  margin-bottom:10px;
+  border:1px solid var(--border);
+  border-radius:13px;
+  background:rgba(255,255,255,.025);
+}
+.import-context-question {
+  width:100%;
+  font-weight:900;
+}
+.import-context-option {
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  margin:0;
+  cursor:pointer;
+  font-weight:700;
+}
+.import-context-option input[type="radio"] {
+  width:18px;
+  height:18px;
+  margin:0;
+  accent-color:#ff7a00;
+}
+.same-import-context-hidden { display:none !important; }
+.advanced-import-defaults-hidden { display:none !important; }
