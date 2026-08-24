@@ -1924,3 +1924,96 @@ a{
     grid-template-columns: 1fr !important;
   }
 }
+
+
+/* HOSE role cleanup */
+.hose-role-hidden {
+  display: none !important;
+}
+
+/* Hunter-orange deer navigation */
+#tab-my-intel .deer-stack-arrow,
+#tab-my-intel .deer-focus-arrow {
+  background: #ff7a00 !important;
+  border: 2px solid #ff9a3d !important;
+  color: #111 !important;
+  opacity: 1 !important;
+  box-shadow:
+    0 0 0 2px rgba(0,0,0,.40),
+    0 4px 16px rgba(0,0,0,.55) !important;
+  font-weight: 900 !important;
+}
+
+#tab-my-intel .deer-stack-arrow:hover,
+#tab-my-intel .deer-focus-arrow:hover {
+  background: #ff922b !important;
+  transform: translateY(-50%) scale(1.05);
+}
+
+
+/* Hunt Your Buck patterns */
+.hunt-pattern-host {
+  margin-top: 14px;
+}
+
+.hunt-pattern-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(4, minmax(0,1fr));
+  gap: 9px;
+  margin-top: 12px;
+}
+
+.hunt-pattern-grid > div {
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+}
+
+.hunt-pattern-grid span,
+.hunt-pattern-transition span {
+  display: block;
+  font-size: .7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  opacity: .65;
+}
+
+.hunt-pattern-grid strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 1.2rem;
+}
+
+.hunt-pattern-grid small {
+  display: block;
+  margin-top: 3px;
+}
+
+.hunt-pattern-transition {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+}
+
+.hunt-pattern-transition strong {
+  display: block;
+  margin-top: 5px;
+}
+
+.hunt-pattern-transition small {
+  display: block;
+  margin-top: 4px;
+}
+
+.hunt-pattern-note {
+  margin-top: 10px;
+}
+
+@media(max-width: 760px) {
+  .hunt-pattern-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}

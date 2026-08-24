@@ -507,6 +507,468 @@ function topLevelTabBlock(
 
 
 
+
+function blockContainingText(
+  tab,
+  searchText
+) {
+  if (
+    !tab ||
+    !searchText
+  ) {
+    return null;
+  }
+
+  const candidates =
+    Array.from(
+      tab.querySelectorAll(
+        "section, article, .card, .intel-card, .panel, .stack"
+      )
+    );
+
+  return candidates.find(
+    element =>
+      element.textContent
+        ?.toLowerCase()
+        .includes(
+          searchText.toLowerCase()
+        )
+  )
+  ||
+  null;
+}
+
+
+function cleanupTabRoles() {
+  const myTab =
+    $("tab-my-intel");
+
+  const areaTab =
+    $("tab-area-intel");
+
+  /*
+   * Tab 1 = deer only.
+   * Remove/hide any legacy Camera Network section if it is still present
+   * in the HTML layout.
+   */
+  const cameraNetwork =
+    blockContainingText(
+      myTab,
+      "camera network"
+    );
+
+  if (cameraNetwork) {
+    cameraNetwork.classList.add(
+      "hose-role-hidden"
+    );
+  }
+
+  /*
+   * Tab 2 = setup / spatial placement only.
+   * Camera Activity and Spatial Pattern belong to Hunt Your Buck.
+   */
+  const activityBlock =
+    $("cameraActivityCards")
+      ? topLevelTabBlock(
+          $("cameraActivityCards"),
+          areaTab
+        )
+      : blockContainingText(
+          areaTab,
+          "camera activity"
+        );
+
+  if (activityBlock) {
+    activityBlock.classList.add(
+      "hose-role-hidden"
+    );
+  }
+
+  const patternBlock =
+    $("spatialSummary")
+      ? topLevelTabBlock(
+          $("spatialSummary"),
+          areaTab
+        )
+      : blockContainingText(
+          areaTab,
+          "spatial pattern"
+        );
+
+  if (patternBlock) {
+    patternBlock.classList.add(
+      "hose-role-hidden"
+    );
+  }
+}
+
+
+function targetPatternSummary(
+  deer
+) {
+  if (!deer) {
+    return null;
+  }
+
+  const rows =
+    sightings
+      .filter(
+        sighting =>
+          sighting.deer_profile_id ===
+          deer.id
+      )
+      .filter(
+        sighting =>
+          sighting.camera_id
+      )
+      .sort(
+        (a, b) =>
+          new Date(
+            a.captured_at
+            || 0
+          )
+          -
+          new Date(
+            b.captured_at
+            || 0
+          )
+      );
+
+  if (!rows.length) {
+    return null;
+  }
+
+  const counts =
+    new Map();
+
+  rows.forEach(
+    sighting => {
+      counts.set(
+        sighting.camera_id,
+        (
+          counts.get(
+            sighting.camera_id
+          )
+          || 0
+        )
+        +
+        1
+      );
+    }
+  );
+
+  const ranked =
+    [...counts.entries()]
+      .sort(
+        (a, b) =>
+          b[1] - a[1]
+      );
+
+  const topCamera =
+    ranked.length
+      ? cameras.find(
+          camera =>
+            camera.id ===
+            ranked[0][0]
+        )
+      : null;
+
+  const hourCounts =
+    new Map();
+
+  rows.forEach(
+    sighting => {
+      if (!sighting.captured_at) {
+        return;
+      }
+
+      const hour =
+        new Date(
+          sighting.captured_at
+        )
+        .getHours();
+
+      hourCounts.set(
+        hour,
+        (
+          hourCounts.get(hour)
+          || 0
+        )
+        +
+        1
+      );
+    }
+  );
+
+  const topHour =
+    [...hourCounts.entries()]
+      .sort(
+        (a,b) =>
+          b[1] - a[1]
+      )[0]
+      ?.[0];
+
+  const transitions = [];
+
+  for (
+    let i = 1;
+    i < rows.length;
+    i++
+  ) {
+    const previous =
+      rows[i - 1];
+
+    const current =
+      rows[i];
+
+    if (
+      previous.camera_id
+      &&
+      current.camera_id
+      &&
+      previous.camera_id !==
+      current.camera_id
+    ) {
+      const from =
+        cameras.find(
+          camera =>
+            camera.id ===
+            previous.camera_id
+        );
+
+      const to =
+        cameras.find(
+          camera =>
+            camera.id ===
+            current.camera_id
+        );
+
+      if (
+        from &&
+        to
+      ) {
+        transitions.push(
+          `${from.name} → ${to.name}`
+        );
+      }
+    }
+  }
+
+  const transitionCounts =
+    new Map();
+
+  transitions.forEach(
+    transition => {
+      transitionCounts.set(
+        transition,
+        (
+          transitionCounts.get(
+            transition
+          )
+          || 0
+        )
+        +
+        1
+      );
+    }
+  );
+
+  const topTransition =
+    [...transitionCounts.entries()]
+      .sort(
+        (a,b) =>
+          b[1] - a[1]
+      )[0];
+
+  return {
+    sightings:
+      rows.length,
+
+    cameras:
+      counts.size,
+
+    topCamera,
+
+    topCameraCount:
+      ranked[0]?.[1]
+      || 0,
+
+    topHour:
+      Number.isFinite(
+        Number(topHour)
+      )
+        ? Number(topHour)
+        : null,
+
+    topTransition:
+      topTransition?.[0]
+      || null,
+
+    topTransitionCount:
+      topTransition?.[1]
+      || 0
+  };
+}
+
+
+function renderHuntBuckPatterns() {
+  const host =
+    $("huntPatternHost");
+
+  if (!host) {
+    return;
+  }
+
+  const deer =
+    huntSelectedDeer();
+
+  const pattern =
+    targetPatternSummary(
+      deer
+    );
+
+  if (
+    !deer
+  ) {
+    host.innerHTML =
+      "";
+    return;
+  }
+
+  if (
+    !pattern
+    ||
+    pattern.sightings < 2
+  ) {
+    host.innerHTML = `
+      <article class="intel-card">
+        <div class="eyebrow">
+          Buck Pattern
+        </div>
+
+        <h3>
+          Not enough pattern data yet
+        </h3>
+
+        <p class="small muted">
+          HOSE will surface movement patterns here after this Target buck has repeat sightings.
+        </p>
+      </article>
+    `;
+    return;
+  }
+
+  const hourLabel =
+    pattern.topHour != null
+      ? new Date(
+          2000,
+          0,
+          1,
+          pattern.topHour
+        )
+        .toLocaleTimeString(
+          [],
+          {
+            hour:
+              "numeric"
+          }
+        )
+      : "Unknown";
+
+  host.innerHTML = `
+    <article class="intel-card hunt-pattern-card">
+
+      <div class="eyebrow">
+        Buck Pattern
+      </div>
+
+      <h3>
+        Observed Movement Pattern
+      </h3>
+
+      <div class="hunt-pattern-grid">
+
+        <div>
+          <span>
+            Pattern Sightings
+          </span>
+
+          <strong>
+            ${pattern.sightings}
+          </strong>
+        </div>
+
+        <div>
+          <span>
+            Cameras Used
+          </span>
+
+          <strong>
+            ${pattern.cameras}
+          </strong>
+        </div>
+
+        <div>
+          <span>
+            Strongest Camera
+          </span>
+
+          <strong>
+            ${
+              pattern.topCamera
+                ? escapeHtml(
+                    pattern.topCamera.name
+                  )
+                : "Unknown"
+            }
+          </strong>
+
+          <small>
+            ${pattern.topCameraCount} sighting${pattern.topCameraCount === 1 ? "" : "s"}
+          </small>
+        </div>
+
+        <div>
+          <span>
+            Most Common Hour
+          </span>
+
+          <strong>
+            ${hourLabel}
+          </strong>
+        </div>
+
+      </div>
+
+      ${
+        pattern.topTransition
+          ? `
+            <div class="hunt-pattern-transition">
+              <span>
+                Strongest observed camera transition
+              </span>
+
+              <strong>
+                ${escapeHtml(pattern.topTransition)}
+              </strong>
+
+              <small>
+                Seen ${pattern.topTransitionCount} time${pattern.topTransitionCount === 1 ? "" : "s"} in sequence.
+              </small>
+            </div>
+          `
+          : ""
+      }
+
+      <div class="small muted hunt-pattern-note">
+        This is an observed trail-camera pattern, not a guarantee of future movement.
+      </div>
+
+    </article>
+  `;
+}
+
+
 function makeDeerProfilePrimary() {
   const myTab =
     $("tab-my-intel");
@@ -1411,6 +1873,11 @@ function ensureHuntYourBuckUi() {
       ></section>
 
       <section
+        id="huntPatternHost"
+        class="hunt-pattern-host"
+      ></section>
+
+      <section
         id="huntPlanHost"
         class="hunt-plan-host"
       ></section>
@@ -1579,6 +2046,22 @@ function renderHuntBuckContext() {
     deerScoreValue(
       deer
     );
+
+  const hasStoredScore =
+    deer.user_estimated_score != null
+    ||
+    deer.ai_score_estimate != null
+    ||
+    Object
+      .values(
+        deer.identity_fingerprint?.seasons
+        || {}
+      )
+      .some(
+        season =>
+          season?.score
+            ?.gross_estimate_inches != null
+      );
 
   const age =
     deerAgeValue(
@@ -1856,6 +2339,8 @@ function renderHuntBuckContext() {
 
     </div>
   `;
+
+  renderHuntBuckPatterns();
 }
 
 
@@ -1928,6 +2413,7 @@ function setupTabs() {
               "my-intel"
             ) {
               makeDeerProfilePrimary();
+              cleanupTabRoles();
               renderDeerProfiles();
             }
 
@@ -1938,6 +2424,7 @@ function setupTabs() {
             ) {
               moveSetupToAreaIntelligence();
               ensureStandMetadataControls();
+              cleanupTabRoles();
 
               initAreaMap();
 
@@ -3187,17 +3674,80 @@ let compareRightDeerId = null;
 
 
 function deerScoreValue(deer) {
-  const value =
-    deer.user_estimated_score
-    ??
-    deer.ai_score_estimate;
+  /*
+   * Score hierarchy:
+   * 1. Hunter-corrected / verified score
+   * 2. Profile's calibrated multi-photo score
+   * 3. Latest season fingerprint aggregate
+   * 4. Any season fingerprint aggregate
+   *
+   * This prevents profiles from looking "unscored" when HOSE already
+   * has usable score evidence stored in the identity fingerprint.
+   */
+  const fingerprint =
+    deer.identity_fingerprint
+    || {};
 
-  const number =
-    Number(value);
+  const latestSeason =
+    fingerprint.latest_season;
 
-  return Number.isFinite(number)
-    ? number
-    : -1;
+  const latestFingerprintScore =
+    latestSeason
+      ? fingerprint
+          .seasons
+          ?.[latestSeason]
+          ?.score
+          ?.gross_estimate_inches
+      : null;
+
+  const anySeasonScore =
+    Object
+      .values(
+        fingerprint.seasons
+        || {}
+      )
+      .map(
+        season =>
+          season?.score
+            ?.gross_estimate_inches
+      )
+      .find(
+        value =>
+          Number.isFinite(
+            Number(value)
+          )
+      );
+
+  const values = [
+    deer.user_estimated_score,
+    deer.ai_score_estimate,
+    latestFingerprintScore,
+    anySeasonScore
+  ];
+
+  for (
+    const value
+    of values
+  ) {
+    const number =
+      Number(value);
+
+    if (
+      value != null
+      &&
+      Number.isFinite(number)
+    ) {
+      return number;
+    }
+  }
+
+  /*
+   * A profile without any score evidence should not silently look broken.
+   * Return 0 as an explicit unscored baseline; UI labels it provisional.
+   * New AI analyses are instructed to produce a conservative score whenever
+   * rack geometry is visible enough to identify a buck.
+   */
+  return 0;
 }
 
 
@@ -3452,8 +4002,11 @@ function deerMetadataHtml(
         </strong>
 
         <small>
-          Range:
-          ${scoreRange}
+          ${
+            hasStoredScore
+              ? `Range: ${scoreRange}`
+              : "Provisional — needs score evidence"
+          }
         </small>
       </div>
 
@@ -7865,6 +8418,7 @@ async function init() {
 
     makeDeerProfilePrimary();
     moveSetupToAreaIntelligence();
+    cleanupTabRoles();
     ensureStandMetadataControls();
 
     [
