@@ -1707,86 +1707,739 @@ function renderCameras() {
 
 let activeDeerProfileIndex = 0;
 let deerProfileSortMode = "biggest_score";
+let deerCompareMode = false;
+let compareLeftDeerId = null;
+let compareRightDeerId = null;
+
 
 function deerScoreValue(deer) {
-  const value = deer.user_estimated_score ?? deer.ai_score_estimate;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : -1;
+  const value =
+    deer.user_estimated_score
+    ??
+    deer.ai_score_estimate;
+
+  const number =
+    Number(value);
+
+  return Number.isFinite(number)
+    ? number
+    : -1;
 }
+
 
 function deerAgeValue(deer) {
-  const value = deer.estimated_age ?? deer.estimated_age_class ?? "";
-  const match = String(value).match(/[0-9]+(?:\.[0-9]+)?/);
-  return match ? Number(match[0]) : -1;
+  const value =
+    deer.estimated_age
+    ??
+    deer.estimated_age_class
+    ??
+    "";
+
+  const match =
+    String(value)
+      .match(
+        /[0-9]+(?:\.[0-9]+)?/
+      );
+
+  return match
+    ? Number(match[0])
+    : -1;
 }
+
 
 function deerFirstSeenValue(deer) {
-  const value = deer.first_seen ?? deer.created_at;
-  const time = value ? new Date(value).getTime() : NaN;
-  return Number.isFinite(time) ? time : Number.MAX_SAFE_INTEGER;
+  const value =
+    deer.first_seen
+    ??
+    deer.created_at;
+
+  const time =
+    value
+      ? new Date(value).getTime()
+      : NaN;
+
+  return Number.isFinite(time)
+    ? time
+    : Number.MAX_SAFE_INTEGER;
 }
+
 
 function deerLastSeenValue(deer) {
-  const value = deer.last_seen ?? deer.updated_at;
-  const time = value ? new Date(value).getTime() : NaN;
-  return Number.isFinite(time) ? time : 0;
+  const value =
+    deer.last_seen
+    ??
+    deer.updated_at;
+
+  const time =
+    value
+      ? new Date(value).getTime()
+      : NaN;
+
+  return Number.isFinite(time)
+    ? time
+    : 0;
 }
 
+
 function sortedDeerProfiles() {
-  const rows = [...deerProfiles];
+  const rows =
+    [...deerProfiles];
 
-  rows.sort((a, b) => {
-    switch (deerProfileSortMode) {
-      case "oldest_age":
-        return deerAgeValue(b) - deerAgeValue(a);
+  rows.sort(
+    (a, b) => {
+      switch (
+        deerProfileSortMode
+      ) {
+        case "oldest_age":
+          return (
+            deerAgeValue(b)
+            -
+            deerAgeValue(a)
+          );
 
-      case "latest_seen":
-        return deerLastSeenValue(b) - deerLastSeenValue(a);
+        case "latest_seen":
+          return (
+            deerLastSeenValue(b)
+            -
+            deerLastSeenValue(a)
+          );
 
-      case "oldest_photo":
-        return deerFirstSeenValue(a) - deerFirstSeenValue(b);
+        case "oldest_photo":
+          return (
+            deerFirstSeenValue(a)
+            -
+            deerFirstSeenValue(b)
+          );
 
-      case "biggest_score":
-      default:
-        return deerScoreValue(b) - deerScoreValue(a);
+        case "biggest_score":
+        default:
+          return (
+            deerScoreValue(b)
+            -
+            deerScoreValue(a)
+          );
+      }
     }
-  });
+  );
 
   return rows;
 }
 
-function moveDeerProfile(direction) {
-  const rows = sortedDeerProfiles();
 
-  if (!rows.length) {
+function moveDeerProfile(direction) {
+  const rows =
+    sortedDeerProfiles();
+
+  if (
+    deerCompareMode
+    ||
+    !rows.length
+  ) {
     return;
   }
 
   activeDeerProfileIndex =
-    (activeDeerProfileIndex + direction + rows.length)
-    % rows.length;
+    (
+      activeDeerProfileIndex
+      +
+      direction
+      +
+      rows.length
+    )
+    %
+    rows.length;
 
   renderDeerProfiles();
 }
+
 
 function setDeerProfileSort(mode) {
-  deerProfileSortMode = mode;
-  activeDeerProfileIndex = 0;
+  deerProfileSortMode =
+    mode;
+
+  activeDeerProfileIndex =
+    0;
+
   renderDeerProfiles();
 }
 
+
+function deerDisplayName(deer) {
+  return (
+    deer.nickname
+    ||
+    deer.deer_code
+    ||
+    "Unnamed Deer"
+  );
+}
+
+
+function deerMetadataHtml(
+  deer,
+  compact = false
+) {
+  const tags =
+    parseTags(
+      deer.profile_tags
+    );
+
+  const score =
+    deerScoreValue(
+      deer
+    );
+
+  const age =
+    deerAgeValue(
+      deer
+    );
+
+  const firstSeen =
+    deer.first_seen
+    ??
+    deer.created_at;
+
+  const lastSeen =
+    deer.last_seen
+    ??
+    deer.updated_at;
+
+  const fingerprint =
+    deer.identity_fingerprint
+    ||
+    {};
+
+  const evidenceCount =
+    Number(
+      fingerprint
+        .evidence_photo_count
+      ||
+      0
+    );
+
+  const angles =
+    fingerprint
+      .all_view_angles
+    ||
+    [];
+
+  const scoreRange =
+    deer.ai_score_range_low != null
+    &&
+    deer.ai_score_range_high != null
+      ? `${Number(deer.ai_score_range_low).toFixed(0)}–${Number(deer.ai_score_range_high).toFixed(0)}"`
+      : "—";
+
+  return `
+    <div class="deer-meta-name-row">
+      <div>
+        <h1>${escapeHtml(deerDisplayName(deer))}</h1>
+
+        <div class="deer-focus-tags">
+          ${
+            tags.length
+              ? tags
+                  .map(
+                    tag =>
+                      `<span class="meta-chip deer-tag ${tag.toLowerCase() === "target" ? "target-tag" : ""}">${escapeHtml(tag)}</span>`
+                  )
+                  .join("")
+              : `<span class="small muted">No tags yet</span>`
+          }
+        </div>
+      </div>
+
+      ${
+        compact
+          ? ""
+          : `
+            <button
+              class="secondary mini"
+              type="button"
+              onclick="openDeerProfileEditor('${deer.id}')"
+            >
+              Edit
+            </button>
+          `
+      }
+    </div>
+
+    <div class="deer-meta-grid">
+
+      <div class="deer-meta-feature">
+        <span>HOSE Score</span>
+
+        <strong>
+          ${
+            score >= 0
+              ? `~${score.toFixed(1)}"`
+              : "—"
+          }
+        </strong>
+
+        <small>
+          Range:
+          ${scoreRange}
+        </small>
+      </div>
+
+      <div>
+        <span>Estimated Age</span>
+        <strong>
+          ${
+            age >= 0
+              ? `${age} yr`
+              : "—"
+          }
+        </strong>
+      </div>
+
+      <div>
+        <span>Score Confidence</span>
+        <strong>
+          ${
+            deer.ai_score_confidence != null
+              ? `${Math.round(Number(deer.ai_score_confidence) * 100)}%`
+              : "—"
+          }
+        </strong>
+      </div>
+
+      <div>
+        <span>Sightings</span>
+        <strong>
+          ${Number(deer.sighting_count || 0)}
+        </strong>
+      </div>
+
+      <div>
+        <span>Confirmed Views</span>
+        <strong>
+          ${evidenceCount}
+        </strong>
+      </div>
+
+      <div>
+        <span>Useful Angles</span>
+        <strong>
+          ${angles.length}
+        </strong>
+      </div>
+
+    </div>
+
+    <div class="deer-meta-history">
+
+      <div>
+        <span>First Seen</span>
+        <strong>
+          ${
+            firstSeen
+              ? new Date(firstSeen).toLocaleDateString()
+              : "Unknown"
+          }
+        </strong>
+      </div>
+
+      <div>
+        <span>Last Seen</span>
+        <strong>
+          ${
+            lastSeen
+              ? new Date(lastSeen).toLocaleString()
+              : "Unknown"
+          }
+        </strong>
+      </div>
+
+    </div>
+
+    ${
+      deer.confirmed_characteristics
+        ? `
+          <div class="deer-meta-text">
+            <span>Confirmed Characteristics</span>
+            <p>${escapeHtml(deer.confirmed_characteristics)}</p>
+          </div>
+        `
+        : ""
+    }
+
+    ${
+      deer.hunter_notes
+        ? `
+          <div class="deer-meta-text">
+            <span>Hunter Notes</span>
+            <p>${escapeHtml(deer.hunter_notes)}</p>
+          </div>
+        `
+        : ""
+    }
+  `;
+}
+
+
+function deerProfileImageHtml(
+  deer,
+  className = ""
+) {
+  const photoUrl =
+    deerProfilePhotoUrls
+      .get(
+        deer.id
+      );
+
+  return (
+    photoUrl
+      ? `
+        <img
+          class="${className}"
+          src="${photoUrl}"
+          alt="Profile photo for ${escapeHtml(deerDisplayName(deer))}"
+        >
+      `
+      : `
+        <div class="deer-focus-image-empty ${className}">
+          🦌
+        </div>
+      `
+  );
+}
+
+
+function beginCompareMode() {
+  const rows =
+    sortedDeerProfiles();
+
+  if (
+    rows.length < 2
+  ) {
+    alert(
+      "You need at least two deer profiles to compare."
+    );
+
+    return;
+  }
+
+  const active =
+    rows[
+      activeDeerProfileIndex
+    ];
+
+  compareLeftDeerId =
+    active?.id
+    ||
+    rows[0].id;
+
+  compareRightDeerId =
+    rows.find(
+      row =>
+        row.id !==
+        compareLeftDeerId
+    )?.id
+    ||
+    null;
+
+  deerCompareMode =
+    true;
+
+  renderDeerProfiles();
+}
+
+
+function exitCompareMode() {
+  deerCompareMode =
+    false;
+
+  compareLeftDeerId =
+    null;
+
+  compareRightDeerId =
+    null;
+
+  renderDeerProfiles();
+}
+
+
+function setCompareDeer(
+  side,
+  deerId
+) {
+  if (
+    side === "left"
+  ) {
+    compareLeftDeerId =
+      deerId;
+  } else {
+    compareRightDeerId =
+      deerId;
+  }
+
+  renderDeerProfiles();
+}
+
+
+function compareDeerOptions(
+  selectedId,
+  excludeId
+) {
+  return sortedDeerProfiles()
+    .filter(
+      deer =>
+        deer.id !==
+        excludeId
+    )
+    .map(
+      deer =>
+        `
+          <option
+            value="${deer.id}"
+            ${deer.id === selectedId ? "selected" : ""}
+          >
+            ${escapeHtml(deerDisplayName(deer))}
+          </option>
+        `
+    )
+    .join("");
+}
+
+
+function compareAndMergeDeer() {
+  const sourceId =
+    compareRightDeerId;
+
+  const destinationId =
+    compareLeftDeerId;
+
+  if (
+    !sourceId
+    ||
+    !destinationId
+    ||
+    sourceId ===
+    destinationId
+  ) {
+    alert(
+      "Choose two different deer."
+    );
+
+    return;
+  }
+
+  ensureMergeDeerUi();
+
+  $("mergeSourceDeerId").value =
+    sourceId;
+
+  $("mergeDestinationDeer").innerHTML =
+    compareDeerOptions(
+      destinationId,
+      sourceId
+    );
+
+  $("mergeDestinationDeer").value =
+    destinationId;
+
+  $("mergeUseSourcePhoto").checked =
+    false;
+
+  $("mergeDeerMessage").textContent =
+    "The LEFT deer will be kept. The RIGHT deer will be merged into it.";
+
+  $("mergeDeerModal")
+    .classList
+    .remove("hidden");
+}
+
+
+function renderDeerCompare() {
+  const container =
+    $("deerCards");
+
+  const left =
+    deerProfiles.find(
+      deer =>
+        deer.id ===
+        compareLeftDeerId
+    );
+
+  const right =
+    deerProfiles.find(
+      deer =>
+        deer.id ===
+        compareRightDeerId
+    );
+
+  if (
+    !left
+    ||
+    !right
+  ) {
+    exitCompareMode();
+    return;
+  }
+
+  container.innerHTML = `
+    <section class="deer-compare-shell">
+
+      <div class="deer-focus-toolbar">
+        <div>
+          <div class="eyebrow">
+            Deer Identity Review
+          </div>
+
+          <h2>
+            Compare Deer
+          </h2>
+
+          <p class="small muted">
+            Compare the two profiles side-by-side. If they are the same deer, keep the LEFT profile and merge the RIGHT profile into it.
+          </p>
+        </div>
+
+        <button
+          class="secondary"
+          type="button"
+          onclick="exitCompareMode()"
+        >
+          Exit Compare
+        </button>
+      </div>
+
+      <div class="deer-compare-grid">
+
+        <article class="deer-compare-side deer-compare-keep">
+
+          <div class="deer-compare-label">
+            KEEP THIS PROFILE
+          </div>
+
+          <select
+            class="deer-compare-select"
+            onchange="setCompareDeer('left', this.value)"
+          >
+            ${
+              compareDeerOptions(
+                left.id,
+                right.id
+              )
+            }
+          </select>
+
+          <div class="deer-compare-image">
+            ${
+              deerProfileImageHtml(
+                left
+              )
+            }
+          </div>
+
+          <div class="deer-compare-metadata">
+            ${
+              deerMetadataHtml(
+                left,
+                true
+              )
+            }
+          </div>
+
+        </article>
+
+
+        <article class="deer-compare-side deer-compare-merge">
+
+          <div class="deer-compare-label">
+            MERGE THIS PROFILE
+          </div>
+
+          <select
+            class="deer-compare-select"
+            onchange="setCompareDeer('right', this.value)"
+          >
+            ${
+              compareDeerOptions(
+                right.id,
+                left.id
+              )
+            }
+          </select>
+
+          <div class="deer-compare-image">
+            ${
+              deerProfileImageHtml(
+                right
+              )
+            }
+          </div>
+
+          <div class="deer-compare-metadata">
+            ${
+              deerMetadataHtml(
+                right,
+                true
+              )
+            }
+          </div>
+
+        </article>
+
+      </div>
+
+      <div class="deer-compare-merge-bar">
+
+        <div>
+          <strong>
+            Same deer?
+          </strong>
+
+          <div class="small muted">
+            This keeps ${escapeHtml(deerDisplayName(left))} and merges all sightings, evidence and metadata from ${escapeHtml(deerDisplayName(right))} into it.
+          </div>
+        </div>
+
+        <button
+          class="primary"
+          type="button"
+          onclick="compareAndMergeDeer()"
+        >
+          Merge These Deer
+        </button>
+
+      </div>
+
+    </section>
+  `;
+}
+
+
 function renderDeerProfiles() {
-  const container = $("deerCards");
+  const container =
+    $("deerCards");
 
   if (!container) {
     return;
   }
 
-  if (!deerProfiles.length) {
+  if (
+    deerCompareMode
+  ) {
+    renderDeerCompare();
+    return;
+  }
+
+  if (
+    !deerProfiles.length
+  ) {
     container.innerHTML = `
       <section class="deer-focus-empty">
-        <div class="eyebrow">Deer Intelligence</div>
-        <h2>No deer profiles yet</h2>
+        <div class="eyebrow">
+          Deer Intelligence
+        </div>
+
+        <h2>
+          No deer profiles yet
+        </h2>
+
         <p class="muted">
           Upload a trail-camera photo to begin building deer intelligence.
         </p>
@@ -1797,203 +2450,136 @@ function renderDeerProfiles() {
     return;
   }
 
-  const rows = sortedDeerProfiles();
+  const rows =
+    sortedDeerProfiles();
 
-  if (activeDeerProfileIndex >= rows.length) {
-    activeDeerProfileIndex = 0;
+  if (
+    activeDeerProfileIndex
+    >=
+    rows.length
+  ) {
+    activeDeerProfileIndex =
+      0;
   }
 
-  const deer = rows[activeDeerProfileIndex];
-  const tags = parseTags(deer.profile_tags);
-  const score = deerScoreValue(deer);
-  const age = deerAgeValue(deer);
-  const firstSeen = deer.first_seen ?? deer.created_at;
-  const lastSeen = deer.last_seen ?? deer.updated_at;
-  const photoUrl = deerProfilePhotoUrls.get(deer.id);
-
-  const fingerprint = deer.identity_fingerprint || {};
-  const evidenceCount = Number(fingerprint.evidence_photo_count || 0);
-  const angles = fingerprint.all_view_angles || [];
-
-  const identityConfidence =
-    deer.identity_confidence != null
-      ? `${Math.round(Number(deer.identity_confidence) * 100)}%`
-      : evidenceCount
-        ? `${evidenceCount} confirmed`
-        : "Building";
-
-  const scoreRange =
-    deer.ai_score_range_low != null &&
-    deer.ai_score_range_high != null
-      ? `${Number(deer.ai_score_range_low).toFixed(0)}–${Number(deer.ai_score_range_high).toFixed(0)}" range`
-      : "No range yet";
+  const deer =
+    rows[
+      activeDeerProfileIndex
+    ];
 
   container.innerHTML = `
     <section class="deer-focus-shell">
 
       <div class="deer-focus-toolbar">
+
         <div>
-          <div class="eyebrow">Deer Intelligence</div>
-          <h2>Deer Profile</h2>
+          <div class="eyebrow">
+            Deer Intelligence
+          </div>
+
+          <h2>
+            Deer Profile
+          </h2>
         </div>
 
-        <label class="deer-focus-sort">
-          <span>Sort deer by</span>
+        <div class="deer-focus-toolbar-actions">
 
-          <select onchange="setDeerProfileSort(this.value)">
-            <option value="biggest_score" ${deerProfileSortMode === "biggest_score" ? "selected" : ""}>
-              Biggest score
-            </option>
+          <label class="deer-focus-sort">
+            <span>
+              Sort deer by
+            </span>
 
-            <option value="oldest_age" ${deerProfileSortMode === "oldest_age" ? "selected" : ""}>
-              Oldest deer
-            </option>
+            <select
+              onchange="setDeerProfileSort(this.value)"
+            >
+              <option
+                value="biggest_score"
+                ${deerProfileSortMode === "biggest_score" ? "selected" : ""}
+              >
+                Biggest score
+              </option>
 
-            <option value="latest_seen" ${deerProfileSortMode === "latest_seen" ? "selected" : ""}>
-              Latest seen
-            </option>
+              <option
+                value="oldest_age"
+                ${deerProfileSortMode === "oldest_age" ? "selected" : ""}
+              >
+                Oldest deer
+              </option>
 
-            <option value="oldest_photo" ${deerProfileSortMode === "oldest_photo" ? "selected" : ""}>
-              Oldest picture date
-            </option>
-          </select>
-        </label>
+              <option
+                value="latest_seen"
+                ${deerProfileSortMode === "latest_seen" ? "selected" : ""}
+              >
+                Latest seen
+              </option>
+
+              <option
+                value="oldest_photo"
+                ${deerProfileSortMode === "oldest_photo" ? "selected" : ""}
+              >
+                Oldest picture date
+              </option>
+            </select>
+          </label>
+
+          <button
+            class="secondary compare-deer-button"
+            type="button"
+            onclick="beginCompareMode()"
+          >
+            Compare Deer
+          </button>
+
+        </div>
+
       </div>
 
-      <article class="deer-focus-card">
 
-        <button
-          class="deer-focus-arrow deer-focus-arrow-left"
-          type="button"
-          onclick="moveDeerProfile(-1)"
-          aria-label="Previous deer"
-        >
-          &#8249;
-        </button>
+      <article class="deer-stack-card">
 
-        <div class="deer-focus-image-column">
+        <div class="deer-image-panel">
 
-          <div class="deer-focus-image-wrap">
+          <button
+            class="deer-stack-arrow deer-stack-arrow-left"
+            type="button"
+            onclick="moveDeerProfile(-1)"
+            aria-label="Previous deer"
+          >
+            &#8249;
+          </button>
+
+          <div class="deer-stack-image">
             ${
-              photoUrl
-                ? `<img src="${photoUrl}" alt="Profile photo for ${escapeHtml(deer.nickname || deer.deer_code || "deer")}">`
-                : `<div class="deer-focus-image-empty">🦌</div>`
+              deerProfileImageHtml(
+                deer
+              )
             }
           </div>
 
-          <div class="deer-focus-position">
-            ${activeDeerProfileIndex + 1} of ${rows.length}
+          <button
+            class="deer-stack-arrow deer-stack-arrow-right"
+            type="button"
+            onclick="moveDeerProfile(1)"
+            aria-label="Next deer"
+          >
+            &#8250;
+          </button>
+
+          <div class="deer-stack-count">
+            ${activeDeerProfileIndex + 1}
+            of
+            ${rows.length}
           </div>
 
         </div>
 
-        <button
-          class="deer-focus-arrow deer-focus-arrow-right"
-          type="button"
-          onclick="moveDeerProfile(1)"
-          aria-label="Next deer"
-        >
-          &#8250;
-        </button>
 
-        <div class="deer-focus-details">
-
-          <div class="deer-focus-name-row">
-
-            <div>
-              <h1>
-                ${escapeHtml(deer.nickname || deer.deer_code || "Unnamed Deer")}
-              </h1>
-
-              <div class="deer-focus-tags">
-                ${
-                  tags.length
-                    ? tags.map(tag => `<span class="meta-chip deer-tag ${tag.toLowerCase() === "target" ? "target-tag" : ""}">${escapeHtml(tag)}</span>`).join("")
-                    : `<span class="small muted">No tags yet</span>`
-                }
-              </div>
-            </div>
-
-            <button
-              class="secondary mini"
-              type="button"
-              onclick="openDeerProfileEditor('${deer.id}')"
-            >
-              Edit
-            </button>
-
-          </div>
-
-          <div class="deer-focus-score">
-            <span>HOSE Score</span>
-
-            <strong>
-              ${score >= 0 ? `~${score.toFixed(1)}"` + '"' : "—"}
-            </strong>
-
-            <small>${scoreRange}</small>
-
-            ${
-              deer.ai_score_confidence != null
-                ? `<small>${Math.round(Number(deer.ai_score_confidence) * 100)}% score confidence</small>`
-                : ""
-            }
-
-            ${
-              deer.calibration_applied
-                ? `<small class="calibration-applied">HOSE calibration applied</small>`
-                : ""
-            }
-          </div>
-
-          <div class="deer-focus-grid">
-
-            <div>
-              <span>Estimated Age</span>
-              <strong>${age >= 0 ? `${age} yr` : "—"}</strong>
-            </div>
-
-            <div>
-              <span>Identity</span>
-              <strong>${identityConfidence}</strong>
-            </div>
-
-            <div>
-              <span>Sightings</span>
-              <strong>${Number(deer.sighting_count || 0)}</strong>
-            </div>
-
-            <div>
-              <span>Useful Angles</span>
-              <strong>${angles.length}</strong>
-            </div>
-
-          </div>
-
-          <div class="deer-focus-history">
-
-            <div>
-              <span>First seen</span>
-              <strong>${firstSeen ? new Date(firstSeen).toLocaleDateString() : "Unknown"}</strong>
-            </div>
-
-            <div>
-              <span>Last seen</span>
-              <strong>${lastSeen ? new Date(lastSeen).toLocaleString() : "Unknown"}</strong>
-            </div>
-
-          </div>
+        <div class="deer-metadata-panel">
 
           ${
-            deer.confirmed_characteristics
-              ? `<p class="small"><strong>Confirmed characteristics:</strong> ${escapeHtml(deer.confirmed_characteristics)}</p>`
-              : ""
-          }
-
-          ${
-            deer.hunter_notes
-              ? `<p class="small"><strong>Hunter notes:</strong> ${escapeHtml(deer.hunter_notes)}</p>`
-              : ""
+            deerMetadataHtml(
+              deer
+            )
           }
 
           <div class="deer-focus-actions">
@@ -2017,17 +2603,16 @@ function renderDeerProfiles() {
             <button
               class="secondary"
               type="button"
-              onclick="openMergeDeer('${deer.id}')"
-            >
-              Merge Deer
-            </button>
-
-            <button
-              class="secondary"
-              type="button"
               onclick="toggleTargetTag('${deer.id}')"
             >
-              ${hasProfileTag(deer, "Target") ? "✓ Target" : "Mark Target"}
+              ${
+                hasProfileTag(
+                  deer,
+                  "Target"
+                )
+                  ? "✓ Target"
+                  : "Mark Target"
+              }
             </button>
 
           </div>
@@ -6034,6 +6619,18 @@ window.moveDeerProfile =
 
 window.setDeerProfileSort =
   setDeerProfileSort;
+
+window.beginCompareMode =
+  beginCompareMode;
+
+window.exitCompareMode =
+  exitCompareMode;
+
+window.setCompareDeer =
+  setCompareDeer;
+
+window.compareAndMergeDeer =
+  compareAndMergeDeer;
 
 
 window.addEventListener(
