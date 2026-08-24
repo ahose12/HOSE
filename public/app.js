@@ -1154,42 +1154,753 @@ async function saveStandDetails() {
 }
 
 
+
+function ensureHoseFourTabLayout() {
+  const myTab =
+    $("tab-my-intel");
+
+  const areaTab =
+    $("tab-area-intel");
+
+  const exploreTab =
+    $("tab-explore-plan");
+
+  if (
+    !myTab ||
+    !areaTab ||
+    !exploreTab
+  ) {
+    return;
+  }
+
+  /*
+   * Deer Intelligence is first and full width.
+   */
+  const deerBlock =
+    topLevelTabBlock(
+      $("deerCards"),
+      myTab
+    );
+
+  if (deerBlock) {
+    deerBlock.classList.add(
+      "deer-primary-block"
+    );
+
+    myTab.prepend(
+      deerBlock
+    );
+  }
+
+  /*
+   * Create Hunt Your Buck between Area Intelligence and Public Land.
+   */
+  let huntTab =
+    $("tab-hunt-buck");
+
+  if (!huntTab) {
+    huntTab =
+      document.createElement(
+        "section"
+      );
+
+    huntTab.id =
+      "tab-hunt-buck";
+
+    huntTab.className =
+      "private-tab-panel hidden hunt-buck-tab";
+
+    areaTab.insertAdjacentElement(
+      "afterend",
+      huntTab
+    );
+  }
+
+  const tabButtons =
+    Array.from(
+      document.querySelectorAll(
+        ".app-tab"
+      )
+    );
+
+  const areaButton =
+    tabButtons.find(
+      button =>
+        button.dataset.tab ===
+        "area-intel"
+    );
+
+  const exploreButton =
+    tabButtons.find(
+      button =>
+        button.dataset.tab ===
+        "explore-plan"
+    );
+
+  if (
+    exploreButton
+  ) {
+    exploreButton.textContent =
+      "🌲 Public Land";
+  }
+
+  if (
+    !document.querySelector(
+      '.app-tab[data-tab="hunt-buck"]'
+    )
+  ) {
+    const huntButton =
+      document.createElement(
+        "button"
+      );
+
+    huntButton.type =
+      "button";
+
+    huntButton.className =
+      "app-tab";
+
+    huntButton.dataset.tab =
+      "hunt-buck";
+
+    huntButton.textContent =
+      "🎯 Hunt Your Buck";
+
+    if (
+      exploreButton
+      &&
+      exploreButton.parentElement
+    ) {
+      exploreButton.parentElement
+        .insertBefore(
+          huntButton,
+          exploreButton
+        );
+    } else if (
+      areaButton
+      &&
+      areaButton.parentElement
+    ) {
+      areaButton.parentElement
+        .appendChild(
+          huntButton
+        );
+    }
+  }
+
+  ensureHuntYourBuckUi();
+}
+
+
+function ensureHuntYourBuckUi() {
+  const huntTab =
+    $("tab-hunt-buck");
+
+  if (
+    !huntTab
+  ) {
+    return;
+  }
+
+  if (
+    !$("huntBuckHeader")
+  ) {
+    huntTab.innerHTML = `
+      <section
+        id="huntBuckHeader"
+        class="hunt-buck-header"
+      >
+        <div>
+          <div class="eyebrow">
+            Decision Intelligence
+          </div>
+
+          <h1>
+            Hunt Your Buck
+          </h1>
+
+          <p class="muted">
+            Select a Target buck and HOSE will bring its identity, sightings, camera pattern, mapped stands, wind and forecast together into one hunt decision.
+          </p>
+        </div>
+      </section>
+
+      <section
+        id="huntBuckContext"
+        class="hunt-buck-context"
+      ></section>
+
+      <section
+        id="huntPlanHost"
+        class="hunt-plan-host"
+      ></section>
+    `;
+  }
+
+  ensureTargetHuntPlanUi();
+}
+
+
+function huntSelectedDeer() {
+  const deerId =
+    $("targetBuckSelect")?.value
+    ||
+    "";
+
+  return deerProfiles.find(
+    deer =>
+      deer.id === deerId
+  )
+  ||
+  null;
+}
+
+
+function huntPropertyForDeer(
+  deer
+) {
+  if (!deer) {
+    return null;
+  }
+
+  return properties.find(
+    property =>
+      property.id ===
+      deer.property_id
+  )
+  ||
+  null;
+}
+
+
+function standMetadataSummary(
+  stand
+) {
+  const parts =
+    [];
+
+  if (
+    stand.stand_type
+  ) {
+    parts.push(
+      standTypeLabel(
+        stand.stand_type
+      )
+    );
+  }
+
+  if (
+    stand.facing_direction
+  ) {
+    parts.push(
+      `Facing ${stand.facing_direction}`
+    );
+  }
+
+  if (
+    stand.height_ft != null
+  ) {
+    parts.push(
+      `${stand.height_ft} ft`
+    );
+  }
+
+  return (
+    parts.join(" · ")
+    ||
+    "Stand metadata not set"
+  );
+}
+
+
+function renderHuntBuckContext() {
+  const host =
+    $("huntBuckContext");
+
+  if (!host) {
+    return;
+  }
+
+  const deer =
+    huntSelectedDeer();
+
+  if (!deer) {
+    host.innerHTML = `
+      <article class="intel-card hunt-empty-card">
+        <strong>
+          Choose a Target buck above.
+        </strong>
+
+        <div class="small muted">
+          Target-tagged deer from Deer Intelligence will appear here.
+        </div>
+      </article>
+    `;
+    return;
+  }
+
+  const property =
+    huntPropertyForDeer(
+      deer
+    );
+
+  const targetRows =
+    targetSightingsFor(
+      deer.id
+    );
+
+  const targetCameras =
+    [
+      ...new Set(
+        targetRows
+          .map(
+            row =>
+              row.camera_id
+          )
+          .filter(Boolean)
+      )
+    ]
+    .map(
+      cameraId =>
+        cameras.find(
+          camera =>
+            camera.id ===
+            cameraId
+        )
+    )
+    .filter(Boolean);
+
+  const propertyStands =
+    stands.filter(
+      stand =>
+        stand.property_id ===
+        deer.property_id
+    );
+
+  const mappedStands =
+    propertyStands.filter(
+      stand =>
+        Number.isFinite(
+          Number(stand.lat)
+        )
+        &&
+        Number.isFinite(
+          Number(stand.lon)
+        )
+    );
+
+  const photoUrl =
+    deerProfilePhotoUrls
+      .get(
+        deer.id
+      );
+
+  const score =
+    deerScoreValue(
+      deer
+    );
+
+  const age =
+    deerAgeValue(
+      deer
+    );
+
+  const fingerprint =
+    deer.identity_fingerprint
+    ||
+    {};
+
+  const angles =
+    fingerprint
+      .all_view_angles
+    ||
+    [];
+
+  const tags =
+    parseTags(
+      deer.profile_tags
+    );
+
+  const hotspot =
+    targetCameraHotspot(
+      deer.id
+    );
+
+  host.innerHTML = `
+    <article class="hunt-buck-profile-card">
+
+      <div class="hunt-buck-profile-image">
+        ${
+          photoUrl
+            ? `<img src="${photoUrl}" alt="${escapeHtml(deerDisplayName(deer))}">`
+            : `<div class="deer-focus-image-empty">🦌</div>`
+        }
+      </div>
+
+      <div class="hunt-buck-profile-data">
+
+        <div class="hunt-buck-title-row">
+          <div>
+            <div class="small muted">
+              ${escapeHtml(property?.name || "Property not set")}
+            </div>
+
+            <h2>
+              ${escapeHtml(deerDisplayName(deer))}
+            </h2>
+
+            <div class="deer-focus-tags">
+              ${
+                tags.map(
+                  tag =>
+                    `<span class="meta-chip deer-tag ${tag.toLowerCase() === "target" ? "target-tag" : ""}">${escapeHtml(tag)}</span>`
+                ).join("")
+              }
+            </div>
+          </div>
+
+          <span class="target-pill">
+            Target
+          </span>
+        </div>
+
+        <div class="hunt-buck-metrics">
+
+          <div>
+            <span>
+              HOSE Score
+            </span>
+            <strong>
+              ${
+                score >= 0
+                  ? `~${score.toFixed(1)}"`
+                  : "—"
+              }
+            </strong>
+          </div>
+
+          <div>
+            <span>
+              Estimated Age
+            </span>
+            <strong>
+              ${
+                age >= 0
+                  ? `${age} yr`
+                  : "—"
+              }
+            </strong>
+          </div>
+
+          <div>
+            <span>
+              Sightings
+            </span>
+            <strong>
+              ${targetRows.length}
+            </strong>
+          </div>
+
+          <div>
+            <span>
+              Useful Angles
+            </span>
+            <strong>
+              ${angles.length}
+            </strong>
+          </div>
+
+          <div>
+            <span>
+              Cameras Seen
+            </span>
+            <strong>
+              ${targetCameras.length}
+            </strong>
+          </div>
+
+          <div>
+            <span>
+              Mapped Stands
+            </span>
+            <strong>
+              ${mappedStands.length}
+            </strong>
+          </div>
+
+        </div>
+
+        ${
+          hotspot
+            ? `
+              <div class="hunt-intel-line">
+                <span>
+                  Current camera hotspot
+                </span>
+
+                <strong>
+                  ${escapeHtml(hotspot.camera.name)}
+                  ·
+                  ${hotspot.count}
+                  sighting${hotspot.count === 1 ? "" : "s"}
+                </strong>
+              </div>
+            `
+            : ""
+        }
+
+        ${
+          deer.confirmed_characteristics
+            ? `
+              <div class="hunt-intel-line hunt-intel-block">
+                <span>
+                  Confirmed characteristics
+                </span>
+
+                <strong>
+                  ${escapeHtml(deer.confirmed_characteristics)}
+                </strong>
+              </div>
+            `
+            : ""
+        }
+
+      </div>
+
+    </article>
+
+
+    <div class="hunt-intel-two-column">
+
+      <article class="intel-card">
+        <div class="eyebrow">
+          Camera Pattern
+        </div>
+
+        <h3>
+          Where This Buck Is Showing
+        </h3>
+
+        <div class="hunt-mini-list">
+          ${
+            targetCameras.length
+              ? targetCameras
+                  .map(
+                    camera => {
+                      const count =
+                        targetRows.filter(
+                          row =>
+                            row.camera_id ===
+                            camera.id
+                        ).length;
+
+                      return `
+                        <div class="hunt-mini-row">
+                          <div>
+                            <strong>
+                              📷 ${escapeHtml(camera.name)}
+                            </strong>
+
+                            <div class="small muted">
+                              ${escapeHtml(camera.primary_habitat || "Habitat not set")}
+                              ${
+                                camera.facing
+                                  ? ` · Facing ${escapeHtml(camera.facing)}`
+                                  : ""
+                              }
+                            </div>
+                          </div>
+
+                          <span class="meta-chip">
+                            ${count} sighting${count === 1 ? "" : "s"}
+                          </span>
+                        </div>
+                      `;
+                    }
+                  )
+                  .join("")
+              : `<div class="muted">No target camera history yet.</div>`
+          }
+        </div>
+      </article>
+
+
+      <article class="intel-card">
+        <div class="eyebrow">
+          Stand Options
+        </div>
+
+        <h3>
+          Your Mapped Setups
+        </h3>
+
+        <div class="hunt-mini-list">
+          ${
+            propertyStands.length
+              ? propertyStands
+                  .map(
+                    stand => `
+                      <div class="hunt-mini-row">
+                        <div>
+                          <strong>
+                            🌲 ${escapeHtml(stand.name)}
+                          </strong>
+
+                          <div class="small muted">
+                            ${escapeHtml(standMetadataSummary(stand))}
+                          </div>
+
+                          ${
+                            stand.primary_habitat
+                              ? `<div class="small muted">${escapeHtml(stand.primary_habitat)}</div>`
+                              : ""
+                          }
+                        </div>
+
+                        <span class="meta-chip">
+                          ${
+                            stand.lat != null &&
+                            stand.lon != null
+                              ? "Mapped"
+                              : "Not mapped"
+                          }
+                        </span>
+                      </div>
+                    `
+                  )
+                  .join("")
+              : `<div class="muted">No stands saved for this property.</div>`
+          }
+        </div>
+      </article>
+
+    </div>
+  `;
+}
+
+
 function setupTabs() {
-  document.querySelectorAll(".app-tab").forEach(button => {
-    button.addEventListener("click", async () => {
-      document.querySelectorAll(".app-tab").forEach(tab => tab.classList.remove("active"));
-      button.classList.add("active");
+  ensureHoseFourTabLayout();
 
-      const selected = button.dataset.tab;
-      $("tab-my-intel").classList.toggle("hidden", selected !== "my-intel");
-      $("tab-area-intel").classList.toggle("hidden", selected !== "area-intel");
-      $("tab-explore-plan").classList.toggle("hidden", selected !== "explore-plan");
+  document
+    .querySelectorAll(
+      ".app-tab"
+    )
+    .forEach(
+      button => {
+        button.addEventListener(
+          "click",
+          async () => {
+            document
+              .querySelectorAll(
+                ".app-tab"
+              )
+              .forEach(
+                tab =>
+                  tab.classList
+                    .remove(
+                      "active"
+                    )
+              );
 
-      if (selected === "area-intel") {
-        moveSetupToAreaIntelligence();
-        ensureStandMetadataControls();
+            button.classList.add(
+              "active"
+            );
 
-        initAreaMap();
+            const selected =
+              button.dataset.tab;
 
-        // IMPORTANT: do not trust stale browser arrays.
-        // Reload this user's property/camera/stand/deer data from Supabase
-        // every time Area Intelligence opens.
-        await reloadAreaIntelligenceData();
+            $("tab-my-intel")
+              .classList
+              .toggle(
+                "hidden",
+                selected !==
+                "my-intel"
+              );
 
-        syncAreaSelectors();
-        renderAreaMap();
+            $("tab-area-intel")
+              .classList
+              .toggle(
+                "hidden",
+                selected !==
+                "area-intel"
+              );
 
-        ensureTargetHuntPlanUi();
-        renderTargetBuckSelector();
+            $("tab-hunt-buck")
+              .classList
+              .toggle(
+                "hidden",
+                selected !==
+                "hunt-buck"
+              );
 
-        setTimeout(() => areaMap?.invalidateSize(), 150);
+            $("tab-explore-plan")
+              .classList
+              .toggle(
+                "hidden",
+                selected !==
+                "explore-plan"
+              );
+
+
+            if (
+              selected ===
+              "my-intel"
+            ) {
+              renderDeerProfiles();
+            }
+
+
+            if (
+              selected ===
+              "area-intel"
+            ) {
+              moveSetupToAreaIntelligence();
+              ensureStandMetadataControls();
+
+              initAreaMap();
+
+              await reloadAreaIntelligenceData();
+
+              syncAreaSelectors();
+              renderAreaMap();
+
+              setTimeout(
+                () =>
+                  areaMap?.invalidateSize(),
+                150
+              );
+            }
+
+
+            if (
+              selected ===
+              "hunt-buck"
+            ) {
+              await reloadAreaIntelligenceData();
+
+              ensureHuntYourBuckUi();
+              renderTargetBuckSelector();
+              renderHuntBuckContext();
+            }
+
+
+            if (
+              selected ===
+              "explore-plan"
+              &&
+              map
+            ) {
+              setTimeout(
+                () =>
+                  map.invalidateSize(),
+                100
+              );
+            }
+          }
+        );
       }
-
-      if (selected === "explore-plan" && map) {
-        setTimeout(() => map.invalidateSize(), 100);
-      }
-    });
-  });
+    );
 }
 
 
@@ -4827,9 +5538,12 @@ async function reloadAreaIntelligenceData() {
    ============================================================ */
 
 function ensureTargetHuntPlanUi() {
+  const host =
+    $("huntPlanHost");
+
   if (
     $("targetHuntPlanCard") ||
-    !$("areaMap")
+    !host
   ) {
     return;
   }
@@ -4888,16 +5602,22 @@ function ensureTargetHuntPlanUi() {
     ></div>
   `;
 
-  $("areaMap")
-    .insertAdjacentElement(
-      "afterend",
-      card
-    );
+  host.appendChild(
+    card
+  );
 
   $("buildTargetPlanBtn")
     .addEventListener(
       "click",
       buildTargetHuntPlan
+    );
+
+  $("targetBuckSelect")
+    .addEventListener(
+      "change",
+      () => {
+        renderHuntBuckContext();
+      }
     );
 }
 
@@ -4907,10 +5627,6 @@ function renderTargetBuckSelector() {
     return;
   }
 
-  const propertyId =
-    $("mapProperty")?.value
-    || "";
-
   const targets =
     deerProfiles
       .filter(
@@ -4919,11 +5635,6 @@ function renderTargetBuckSelector() {
             deer,
             "Target"
           )
-      )
-      .filter(
-        deer =>
-          !propertyId ||
-          deer.property_id === propertyId
       );
 
   const previous =
@@ -4953,6 +5664,8 @@ function renderTargetBuckSelector() {
     $("targetBuckSelect").value =
       targets[0].id;
   }
+
+  renderHuntBuckContext();
 
   if ($("targetPlanMessage")) {
     if (!targets.length) {
@@ -5458,12 +6171,18 @@ function scoreStandForecastWindow({
 async function buildTargetHuntPlan() {
   ensureTargetHuntPlanUi();
 
-  const propertyId =
-    $("mapProperty")?.value
-    || "";
-
   const deerId =
     $("targetBuckSelect")?.value
+    || "";
+
+  const deer =
+    deerProfiles.find(
+      row =>
+        row.id === deerId
+    );
+
+  const propertyId =
+    deer?.property_id
     || "";
 
   const property =
@@ -5472,15 +6191,9 @@ async function buildTargetHuntPlan() {
         row.id === propertyId
     );
 
-  const deer =
-    deerProfiles.find(
-      row =>
-        row.id === deerId
-    );
-
   if (!propertyId) {
     $("targetPlanMessage").textContent =
-      "Choose a property first.";
+      "This Target buck is not tied to a property yet.";
     return;
   }
 
@@ -7059,6 +7772,7 @@ async function init() {
    * This entire block can fail and authentication will still work.
    */
   try {
+    ensureHoseFourTabLayout();
     setupTabs();
 
     moveSetupToAreaIntelligence();
