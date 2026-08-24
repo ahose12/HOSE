@@ -4261,16 +4261,6 @@ let compareRightDeerId = null;
 
 
 function deerScoreValue(deer) {
-  /*
-   * Score hierarchy:
-   * 1. Hunter-corrected / verified score
-   * 2. Profile's calibrated multi-photo score
-   * 3. Latest season fingerprint aggregate
-   * 4. Any season fingerprint aggregate
-   *
-   * This prevents profiles from looking "unscored" when HOSE already
-   * has usable score evidence stored in the identity fingerprint.
-   */
   const fingerprint =
     deer.identity_fingerprint
     || {};
@@ -4328,12 +4318,6 @@ function deerScoreValue(deer) {
     }
   }
 
-  /*
-   * A profile without any score evidence should not silently look broken.
-   * Return 0 as an explicit unscored baseline; UI labels it provisional.
-   * New AI analyses are instructed to produce a conservative score whenever
-   * rack geometry is visible enough to identify a buck.
-   */
   return 0;
 }
 
@@ -4352,9 +4336,11 @@ function deerAgeValue(deer) {
         /[0-9]+(?:\.[0-9]+)?/
       );
 
-  return match
-    ? Number(match[0])
-    : -1;
+  return (
+    match
+      ? Number(match[0])
+      : -1
+  );
 }
 
 
@@ -4369,9 +4355,11 @@ function deerFirstSeenValue(deer) {
       ? new Date(value).getTime()
       : NaN;
 
-  return Number.isFinite(time)
-    ? time
-    : Number.MAX_SAFE_INTEGER;
+  return (
+    Number.isFinite(time)
+      ? time
+      : Number.MAX_SAFE_INTEGER
+  );
 }
 
 
@@ -4386,9 +4374,11 @@ function deerLastSeenValue(deer) {
       ? new Date(value).getTime()
       : NaN;
 
-  return Number.isFinite(time)
-    ? time
-    : 0;
+  return (
+    Number.isFinite(time)
+      ? time
+      : 0
+  );
 }
 
 
@@ -4486,6 +4476,34 @@ function deerDisplayName(deer) {
 }
 
 
+function deerProfileImageHtml(
+  deer,
+  extraClass = ""
+) {
+  const photoUrl =
+    deerProfilePhotoUrls
+      .get(
+        deer.id
+      );
+
+  return (
+    photoUrl
+      ? `
+        <img
+          class="${extraClass}"
+          src="${photoUrl}"
+          alt="Profile photo for ${escapeHtml(deerDisplayName(deer))}"
+        >
+      `
+      : `
+        <div class="single-buck-image-empty ${extraClass}">
+          🦌
+        </div>
+      `
+  );
+}
+
+
 function deerMetadataHtml(
   deer,
   compact = false
@@ -4542,11 +4560,14 @@ function deerMetadataHtml(
       : "—";
 
   return `
-    <div class="deer-meta-name-row">
-      <div>
-        <h1>${escapeHtml(deerDisplayName(deer))}</h1>
+    <div class="single-buck-meta-header">
 
-        <div class="deer-focus-tags">
+      <div>
+        <h1>
+          ${escapeHtml(deerDisplayName(deer))}
+        </h1>
+
+        <div class="single-buck-tags">
           ${
             tags.length
               ? tags
@@ -4569,36 +4590,35 @@ function deerMetadataHtml(
               type="button"
               onclick="openDeerProfileEditor('${deer.id}')"
             >
-              Edit
+              Edit Profile
             </button>
           `
       }
+
     </div>
 
-    <div class="deer-meta-grid">
+    <div class="single-buck-meta-grid">
 
-      <div class="deer-meta-feature">
-        <span>HOSE Score</span>
+      <div class="single-buck-score">
+        <span>
+          HOSE Score
+        </span>
 
         <strong>
-          ${
-            score >= 0
-              ? `~${score.toFixed(1)}"`
-              : "—"
-          }
+          ~${score.toFixed(1)}"
         </strong>
 
         <small>
-          ${
-            hasStoredScore
-              ? `Range: ${scoreRange}`
-              : "Provisional — needs score evidence"
-          }
+          Range:
+          ${scoreRange}
         </small>
       </div>
 
       <div>
-        <span>Estimated Age</span>
+        <span>
+          Estimated Age
+        </span>
+
         <strong>
           ${
             age >= 0
@@ -4609,7 +4629,10 @@ function deerMetadataHtml(
       </div>
 
       <div>
-        <span>Score Confidence</span>
+        <span>
+          Score Confidence
+        </span>
+
         <strong>
           ${
             deer.ai_score_confidence != null
@@ -4620,32 +4643,40 @@ function deerMetadataHtml(
       </div>
 
       <div>
-        <span>Sightings</span>
+        <span>
+          Sightings
+        </span>
+
         <strong>
           ${Number(deer.sighting_count || 0)}
         </strong>
       </div>
 
       <div>
-        <span>Confirmed Views</span>
+        <span>
+          Confirmed Views
+        </span>
+
         <strong>
           ${evidenceCount}
         </strong>
       </div>
 
       <div>
-        <span>Useful Angles</span>
+        <span>
+          Useful Angles
+        </span>
+
         <strong>
           ${angles.length}
         </strong>
       </div>
 
-    </div>
-
-    <div class="deer-meta-history">
-
       <div>
-        <span>First Seen</span>
+        <span>
+          First Seen
+        </span>
+
         <strong>
           ${
             firstSeen
@@ -4656,11 +4687,14 @@ function deerMetadataHtml(
       </div>
 
       <div>
-        <span>Last Seen</span>
+        <span>
+          Last Seen
+        </span>
+
         <strong>
           ${
             lastSeen
-              ? new Date(lastSeen).toLocaleString()
+              ? new Date(lastSeen).toLocaleDateString()
               : "Unknown"
           }
         </strong>
@@ -4671,9 +4705,14 @@ function deerMetadataHtml(
     ${
       deer.confirmed_characteristics
         ? `
-          <div class="deer-meta-text">
-            <span>Confirmed Characteristics</span>
-            <p>${escapeHtml(deer.confirmed_characteristics)}</p>
+          <div class="single-buck-meta-text">
+            <span>
+              Confirmed Characteristics
+            </span>
+
+            <p>
+              ${escapeHtml(deer.confirmed_characteristics)}
+            </p>
           </div>
         `
         : ""
@@ -4682,42 +4721,19 @@ function deerMetadataHtml(
     ${
       deer.hunter_notes
         ? `
-          <div class="deer-meta-text">
-            <span>Hunter Notes</span>
-            <p>${escapeHtml(deer.hunter_notes)}</p>
+          <div class="single-buck-meta-text">
+            <span>
+              Hunter Notes
+            </span>
+
+            <p>
+              ${escapeHtml(deer.hunter_notes)}
+            </p>
           </div>
         `
         : ""
     }
   `;
-}
-
-
-function deerProfileImageHtml(
-  deer,
-  className = ""
-) {
-  const photoUrl =
-    deerProfilePhotoUrls
-      .get(
-        deer.id
-      );
-
-  return (
-    photoUrl
-      ? `
-        <img
-          class="${className}"
-          src="${photoUrl}"
-          alt="Profile photo for ${escapeHtml(deerDisplayName(deer))}"
-        >
-      `
-      : `
-        <div class="deer-focus-image-empty ${className}">
-          🦌
-        </div>
-      `
-  );
 }
 
 
@@ -4862,7 +4878,9 @@ function compareAndMergeDeer() {
 
   $("mergeDeerModal")
     .classList
-    .remove("hidden");
+    .remove(
+      "hidden"
+    );
 }
 
 
@@ -4894,21 +4912,22 @@ function renderDeerCompare() {
   }
 
   container.innerHTML = `
-    <section class="deer-compare-shell">
+    <section class="single-buck-pane single-buck-compare-pane">
 
-      <div class="deer-focus-toolbar">
+      <div class="single-buck-toolbar">
+
         <div>
           <div class="eyebrow">
-            Deer Identity Review
+            Deer Profiles
           </div>
 
           <h2>
-            Compare Deer
+            Compare Profiles
           </h2>
 
-          <p class="small muted">
-            Compare the two profiles side-by-side. If they are the same deer, keep the LEFT profile and merge the RIGHT profile into it.
-          </p>
+          <div class="small muted">
+            Left profile stays. Right profile is merged into it.
+          </div>
         </div>
 
         <button
@@ -4918,96 +4937,71 @@ function renderDeerCompare() {
         >
           Exit Compare
         </button>
+
       </div>
 
-      <div class="deer-compare-grid">
 
-        <article class="deer-compare-side deer-compare-keep">
+      <div class="single-buck-compare-grid">
 
-          <div class="deer-compare-label">
+        <article class="single-buck-compare-side single-buck-compare-keep">
+
+          <div class="single-buck-compare-label">
             KEEP THIS PROFILE
           </div>
 
           <select
-            class="deer-compare-select"
+            class="single-buck-compare-select"
             onchange="setCompareDeer('left', this.value)"
           >
-            ${
-              compareDeerOptions(
-                left.id,
-                right.id
-              )
-            }
+            ${compareDeerOptions(left.id, right.id)}
           </select>
 
-          <div class="deer-compare-image">
-            ${
-              deerProfileImageHtml(
-                left
-              )
-            }
+          <div class="single-buck-compare-image">
+            ${deerProfileImageHtml(left)}
           </div>
 
-          <div class="deer-compare-metadata">
-            ${
-              deerMetadataHtml(
-                left,
-                true
-              )
-            }
+          <div class="single-buck-compare-meta">
+            ${deerMetadataHtml(left, true)}
           </div>
 
         </article>
 
 
-        <article class="deer-compare-side deer-compare-merge">
+        <article class="single-buck-compare-side">
 
-          <div class="deer-compare-label">
+          <div class="single-buck-compare-label">
             MERGE THIS PROFILE
           </div>
 
           <select
-            class="deer-compare-select"
+            class="single-buck-compare-select"
             onchange="setCompareDeer('right', this.value)"
           >
-            ${
-              compareDeerOptions(
-                right.id,
-                left.id
-              )
-            }
+            ${compareDeerOptions(right.id, left.id)}
           </select>
 
-          <div class="deer-compare-image">
-            ${
-              deerProfileImageHtml(
-                right
-              )
-            }
+          <div class="single-buck-compare-image">
+            ${deerProfileImageHtml(right)}
           </div>
 
-          <div class="deer-compare-metadata">
-            ${
-              deerMetadataHtml(
-                right,
-                true
-              )
-            }
+          <div class="single-buck-compare-meta">
+            ${deerMetadataHtml(right, true)}
           </div>
 
         </article>
 
       </div>
 
-      <div class="deer-compare-merge-bar">
+
+      <div class="single-buck-merge-bar">
 
         <div>
           <strong>
-            Same deer?
+            Same buck?
           </strong>
 
           <div class="small muted">
-            This keeps ${escapeHtml(deerDisplayName(left))} and merges all sightings, evidence and metadata from ${escapeHtml(deerDisplayName(right))} into it.
+            Merge the right profile into the left profile and combine its sightings, evidence and metadata.
           </div>
         </div>
 
@@ -5016,7 +5010,7 @@ function renderDeerCompare() {
           type="button"
           onclick="compareAndMergeDeer()"
         >
-          Merge These Deer
+          Merge These Profiles
         </button>
 
       </div>
@@ -5041,31 +5035,30 @@ function renderDeerProfiles() {
     return;
   }
 
-  if (
-    !deerProfiles.length
-  ) {
+  const rows =
+    sortedDeerProfiles();
+
+  if (!rows.length) {
     container.innerHTML = `
-      <section class="deer-focus-empty">
-        <div class="eyebrow">
-          Deer Intelligence
+      <section class="single-buck-pane">
+        <div class="single-buck-empty">
+          <div class="eyebrow">
+            Deer Profiles
+          </div>
+
+          <h2>
+            No deer profiles yet
+          </h2>
+
+          <p class="muted">
+            Upload trail-camera photos from Area Intelligence to begin building profiles.
+          </p>
         </div>
-
-        <h2>
-          No deer profiles yet
-        </h2>
-
-        <p class="muted">
-          Upload a trail-camera photo to begin building deer intelligence.
-        </p>
       </section>
     `;
 
-    renderTargetBuckSelector();
     return;
   }
-
-  const rows =
-    sortedDeerProfiles();
 
   if (
     activeDeerProfileIndex
@@ -5082,25 +5075,26 @@ function renderDeerProfiles() {
     ];
 
   container.innerHTML = `
-    <section class="deer-focus-shell">
+    <section class="single-buck-pane">
 
-      <div class="deer-focus-toolbar">
+      <div class="single-buck-toolbar">
 
         <div>
           <div class="eyebrow">
-            Deer Intelligence
+            Deer Profiles
           </div>
 
           <h2>
-            Deer Profile
+            Buck Profile
           </h2>
         </div>
 
-        <div class="deer-focus-toolbar-actions">
 
-          <label class="deer-focus-sort">
+        <div class="single-buck-toolbar-actions">
+
+          <label class="single-buck-sort">
             <span>
-              Sort deer by
+              Sort / Filter
             </span>
 
             <select
@@ -5136,12 +5130,13 @@ function renderDeerProfiles() {
             </select>
           </label>
 
+
           <button
-            class="secondary compare-deer-button"
+            class="secondary"
             type="button"
             onclick="beginCompareMode()"
           >
-            Compare Deer
+            Compare
           </button>
 
         </div>
@@ -5149,12 +5144,12 @@ function renderDeerProfiles() {
       </div>
 
 
-      <article class="deer-stack-card">
+      <article class="single-buck-card">
 
-        <div class="deer-image-panel">
+        <div class="single-buck-image-pane">
 
           <button
-            class="deer-stack-arrow deer-stack-arrow-left"
+            class="single-buck-arrow single-buck-arrow-left"
             type="button"
             onclick="moveDeerProfile(-1)"
             aria-label="Previous deer"
@@ -5162,16 +5157,12 @@ function renderDeerProfiles() {
             &#8249;
           </button>
 
-          <div class="deer-stack-image">
-            ${
-              deerProfileImageHtml(
-                deer
-              )
-            }
+          <div class="single-buck-image">
+            ${deerProfileImageHtml(deer)}
           </div>
 
           <button
-            class="deer-stack-arrow deer-stack-arrow-right"
+            class="single-buck-arrow single-buck-arrow-right"
             type="button"
             onclick="moveDeerProfile(1)"
             aria-label="Next deer"
@@ -5179,7 +5170,7 @@ function renderDeerProfiles() {
             &#8250;
           </button>
 
-          <div class="deer-stack-count">
+          <div class="single-buck-index">
             ${activeDeerProfileIndex + 1}
             of
             ${rows.length}
@@ -5188,15 +5179,11 @@ function renderDeerProfiles() {
         </div>
 
 
-        <div class="deer-metadata-panel">
+        <div class="single-buck-metadata-pane">
 
-          ${
-            deerMetadataHtml(
-              deer
-            )
-          }
+          ${deerMetadataHtml(deer)}
 
-          <div class="deer-focus-actions">
+          <div class="single-buck-actions">
 
             <button
               class="primary"
@@ -5237,8 +5224,6 @@ function renderDeerProfiles() {
 
     </section>
   `;
-
-  renderTargetBuckSelector();
 }
 
 
@@ -9300,6 +9285,12 @@ window.setCompareDeer =
 
 window.compareAndMergeDeer =
   compareAndMergeDeer;
+
+
+
+
+
+
 
 
 window.addEventListener(
