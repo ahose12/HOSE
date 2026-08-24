@@ -600,6 +600,15 @@ function cleanupTabRoles() {
       "hose-role-hidden"
     );
   }
+
+  /*
+   * Never hide the dedicated first-tab Deer / Trail Cam / AI home.
+   */
+  $("deerIntelligenceHome")
+    ?.classList
+    .remove(
+      "hose-role-hidden"
+    );
 }
 
 
@@ -969,12 +978,9 @@ function renderHuntBuckPatterns() {
 }
 
 
-function makeDeerProfilePrimary() {
+function ensureDeerIntelligenceHome() {
   const myTab =
     $("tab-my-intel");
-
-  const areaTab =
-    $("tab-area-intel");
 
   const deerCards =
     $("deerCards");
@@ -986,80 +992,659 @@ function makeDeerProfilePrimary() {
     return;
   }
 
-  const deerBlock =
-    topLevelTabBlock(
-      deerCards,
-      myTab
+  let home =
+    $("deerIntelligenceHome");
+
+  if (!home) {
+    home =
+      document.createElement(
+        "div"
+      );
+
+    home.id =
+      "deerIntelligenceHome";
+
+    home.className =
+      "deer-intelligence-home";
+
+    home.innerHTML = `
+      <section
+        id="deerProfileMainSection"
+        class="deer-profile-main-section"
+      >
+        <div
+          id="deerProfileMainHost"
+          class="deer-profile-main-host"
+        ></div>
+      </section>
+
+      <section
+        id="trailCamIntelligenceSection"
+        class="first-tab-intel-section"
+      >
+        <div class="section-heading-row">
+          <div>
+            <div class="eyebrow">
+              Trail Cam Intelligence
+            </div>
+
+            <h2>
+              What Your Cameras Are Seeing
+            </h2>
+
+            <p class="small muted">
+              Activity summaries from your saved trail-camera sightings. Camera setup itself stays in Area Intelligence.
+            </p>
+          </div>
+        </div>
+
+        <div
+          id="trailCamIntelligenceCards"
+          class="first-tab-intel-grid"
+        ></div>
+      </section>
+
+      <section
+        id="aiAnalysisSection"
+        class="first-tab-intel-section"
+      >
+        <div class="section-heading-row">
+          <div>
+            <div class="eyebrow">
+              AI Analysis
+            </div>
+
+            <h2>
+              Recent Deer Analysis
+            </h2>
+
+            <p class="small muted">
+              Recent HOSE AI findings, identity context and scoring information from analyzed trail-camera photos.
+            </p>
+          </div>
+        </div>
+
+        <div
+          id="aiAnalysisCards"
+          class="ai-analysis-grid"
+        ></div>
+      </section>
+    `;
+
+    myTab.prepend(
+      home
     );
+  }
+
+  const deerHost =
+    $("deerProfileMainHost");
 
   if (
-    !deerBlock
+    deerCards.parentElement !==
+    deerHost
+  ) {
+    deerHost.appendChild(
+      deerCards
+    );
+  }
+
+  /*
+   * Hide any now-empty legacy card/container that previously owned deerCards.
+   */
+  Array
+    .from(
+      myTab.children
+    )
+    .forEach(
+      child => {
+        if (
+          child !== home &&
+          !child.contains(
+            $("photoUpload")
+          ) &&
+          !child.contains(
+            $("propertyName")
+          ) &&
+          !child.contains(
+            $("cameraName")
+          )
+        ) {
+          const text =
+            child.textContent
+              ?.toLowerCase()
+              ||
+              "";
+
+          if (
+            text.includes(
+              "camera network"
+            )
+          ) {
+            child.classList.add(
+              "hose-role-hidden"
+            );
+          }
+        }
+      }
+    );
+}
+
+
+function makeDeerProfilePrimary() {
+  ensureDeerIntelligenceHome();
+  renderFirstTabIntelligence();
+}
+
+
+async function renderFirstTabIntelligence() {
+  renderTrailCamIntelligence();
+
+  try {
+    await renderFirstTabAiAnalysis();
+  } catch (error) {
+    console.error(
+      "HOSE first-tab AI analysis render failed:",
+      error
+    );
+  }
+}
+
+
+function renderTrailCamIntelligence() {
+  const host =
+    $("trailCamIntelligenceCards");
+
+  if (!host) {
+    return;
+  }
+
+  if (
+    !cameras.length
+  ) {
+    host.innerHTML = `
+      <article class="first-tab-summary-card">
+        <strong>
+          No cameras yet
+        </strong>
+
+        <div class="small muted">
+          Add and map cameras in Area Intelligence.
+        </div>
+      </article>
+    `;
+    return;
+  }
+
+  const cameraRows =
+    cameras
+      .map(
+        camera => {
+          const rows =
+            sightings.filter(
+              sighting =>
+                sighting.camera_id ===
+                camera.id
+            );
+
+          const deerCount =
+            rows.reduce(
+              (total, row) =>
+                total
+                +
+                Number(
+                  row.deer_count
+                  ||
+                  0
+                ),
+              0
+            );
+
+          const buckCount =
+            rows.reduce(
+              (total, row) =>
+                total
+                +
+                Number(
+                  row.buck_count
+                  ||
+                  0
+                ),
+              0
+            );
+
+          const identified =
+            new Set(
+              rows
+                .map(
+                  row =>
+                    row.deer_profile_id
+                )
+                .filter(Boolean)
+            ).size;
+
+          const latest =
+            rows
+              .filter(
+                row =>
+                  row.captured_at
+              )
+              .sort(
+                (a,b) =>
+                  new Date(
+                    b.captured_at
+                  )
+                  -
+                  new Date(
+                    a.captured_at
+                  )
+              )[0];
+
+          return {
+            camera,
+            rows,
+            deerCount,
+            buckCount,
+            identified,
+            latest
+          };
+        }
+      )
+      .sort(
+        (a,b) =>
+          b.rows.length
+          -
+          a.rows.length
+      );
+
+  const totalSightings =
+    sightings.length;
+
+  const totalBucks =
+    sightings.reduce(
+      (total, row) =>
+        total
+        +
+        Number(
+          row.buck_count
+          ||
+          0
+        ),
+      0
+    );
+
+  const totalProfiles =
+    new Set(
+      sightings
+        .map(
+          row =>
+            row.deer_profile_id
+        )
+        .filter(Boolean)
+    ).size;
+
+  host.innerHTML = `
+    <article class="first-tab-summary-card first-tab-summary-feature">
+      <div class="summary-metric-row">
+        <div>
+          <span>
+            Sightings
+          </span>
+
+          <strong>
+            ${totalSightings}
+          </strong>
+        </div>
+
+        <div>
+          <span>
+            Bucks Seen
+          </span>
+
+          <strong>
+            ${totalBucks}
+          </strong>
+        </div>
+
+        <div>
+          <span>
+            Identified Deer
+          </span>
+
+          <strong>
+            ${totalProfiles}
+          </strong>
+        </div>
+
+        <div>
+          <span>
+            Active Cameras
+          </span>
+
+          <strong>
+            ${cameras.length}
+          </strong>
+        </div>
+      </div>
+    </article>
+
+    ${
+      cameraRows
+        .slice(
+          0,
+          8
+        )
+        .map(
+          item => `
+            <article class="first-tab-summary-card">
+              <div class="camera-intel-title">
+                <strong>
+                  📷 ${escapeHtml(item.camera.name)}
+                </strong>
+
+                ${
+                  item.camera.facing
+                    ? `<span class="meta-chip">Facing ${escapeHtml(item.camera.facing)}</span>`
+                    : ""
+                }
+              </div>
+
+              <div class="small muted">
+                ${escapeHtml(item.camera.primary_habitat || "Habitat not set")}
+              </div>
+
+              <div class="camera-intel-metrics">
+                <span>
+                  ${item.rows.length} sighting${item.rows.length === 1 ? "" : "s"}
+                </span>
+
+                <span>
+                  ${item.buckCount} buck${item.buckCount === 1 ? "" : "s"}
+                </span>
+
+                <span>
+                  ${item.identified} identified
+                </span>
+              </div>
+
+              <div class="small muted">
+                ${
+                  item.latest?.captured_at
+                    ? `Latest: ${new Date(item.latest.captured_at).toLocaleString()}`
+                    : "No dated sightings yet"
+                }
+              </div>
+            </article>
+          `
+        )
+        .join("")
+    }
+  `;
+}
+
+
+async function renderFirstTabAiAnalysis() {
+  const host =
+    $("aiAnalysisCards");
+
+  if (
+    !host ||
+    !currentUser
   ) {
     return;
   }
 
-  deerBlock.classList.add(
-    "deer-primary-block",
-    "deer-main-stage"
-  );
-
-  /*
-   * Put the deer profile at the very top of Tab 1.
-   */
-  myTab.prepend(
-    deerBlock
-  );
-
-  /*
-   * If the old My Cameras block still exists in Tab 1,
-   * move that entire block to Area Intelligence so the deer
-   * profile owns the broad primary region instead of sharing it.
-   */
-  const cameraCards =
-    $("cameraCards");
-
-  const cameraBlock =
-    cameraCards
-      ? topLevelTabBlock(
-          cameraCards,
-          myTab
-        )
-      : null;
-
-  if (
-    cameraBlock &&
-    cameraBlock !== deerBlock &&
-    areaTab
-  ) {
-    let setupHost =
-      $("areaSetupHost");
-
-    if (!setupHost) {
-      setupHost =
-        document.createElement(
-          "section"
-        );
-
-      setupHost.id =
-        "areaSetupHost";
-
-      setupHost.className =
-        "area-setup-host";
-
-      areaTab.prepend(
-        setupHost
+  const {
+    data: rows,
+    error
+  } =
+    await sb
+      .from(
+        "trail_photos"
+      )
+      .select(
+        "id, original_filename, captured_at, uploaded_at, ai_analysis, processing_status, assigned_deer_profile_id"
+      )
+      .eq(
+        "user_id",
+        currentUser.id
+      )
+      .not(
+        "ai_analysis",
+        "is",
+        null
+      )
+      .order(
+        "uploaded_at",
+        {
+          ascending:
+            false
+        }
+      )
+      .limit(
+        12
       );
-    }
 
-    cameraBlock.classList.add(
-      "area-moved-setup-block"
-    );
-
-    setupHost.appendChild(
-      cameraBlock
-    );
+  if (error) {
+    host.innerHTML = `
+      <article class="first-tab-summary-card">
+        <div class="muted">
+          ${escapeHtml(error.message)}
+        </div>
+      </article>
+    `;
+    return;
   }
+
+  const analyzed =
+    rows
+    ||
+    [];
+
+  if (!analyzed.length) {
+    host.innerHTML = `
+      <article class="first-tab-summary-card">
+        <strong>
+          No AI analysis yet
+        </strong>
+
+        <div class="small muted">
+          Upload trail-camera photos from Area Intelligence to begin analysis.
+        </div>
+      </article>
+    `;
+    return;
+  }
+
+  host.innerHTML =
+    analyzed
+      .map(
+        row => {
+          const analysis =
+            row.ai_analysis
+            ||
+            {};
+
+          const deerRows =
+            analysis.deer
+            ||
+            [];
+
+          const bucks =
+            deerRows.filter(
+              deer =>
+                deer.sex ===
+                "buck"
+            );
+
+          const bestBuck =
+            bucks
+              .slice()
+              .sort(
+                (a,b) =>
+                  Number(
+                    b.score_estimate
+                      ?.gross_score_inches
+                    ||
+                    0
+                  )
+                  -
+                  Number(
+                    a.score_estimate
+                      ?.gross_score_inches
+                    ||
+                    0
+                  )
+              )[0];
+
+          const score =
+            bestBuck
+              ?.score_estimate
+              ?.gross_score_inches;
+
+          const scoreLow =
+            bestBuck
+              ?.score_estimate
+              ?.range_low_inches;
+
+          const scoreHigh =
+            bestBuck
+              ?.score_estimate
+              ?.range_high_inches;
+
+          const traits =
+            [
+              ...(
+                bestBuck
+                  ?.antler_traits
+                ||
+                []
+              ),
+              ...(
+                bestBuck
+                  ?.body_traits
+                ||
+                []
+              ),
+              ...(
+                bestBuck
+                  ?.face_traits
+                ||
+                []
+              )
+            ]
+            .slice(
+              0,
+              4
+            );
+
+          return `
+            <article class="ai-analysis-card">
+
+              <div class="ai-analysis-title-row">
+                <strong>
+                  ${escapeHtml(row.original_filename || "Trail photo")}
+                </strong>
+
+                <span class="meta-chip">
+                  ${escapeHtml(row.processing_status || "analyzed")}
+                </span>
+              </div>
+
+              <div class="ai-analysis-counts">
+                <span>
+                  🦌 ${Number(analysis.deer_count || 0)}
+                </span>
+
+                <span>
+                  ♂ ${Number(analysis.buck_count || 0)}
+                </span>
+
+                <span>
+                  ♀ ${Number(analysis.doe_count || 0)}
+                </span>
+
+                <span>
+                  Fawn ${Number(analysis.fawn_count || 0)}
+                </span>
+              </div>
+
+              ${
+                bestBuck
+                  ? `
+                    <div class="ai-analysis-buck">
+                      <div>
+                        <span>
+                          Buck score
+                        </span>
+
+                        <strong>
+                          ${
+                            score != null
+                              ? `~${Number(score).toFixed(1)}"`
+                              : "Broad estimate pending"
+                          }
+                        </strong>
+
+                        ${
+                          scoreLow != null &&
+                          scoreHigh != null
+                            ? `<small>${Number(scoreLow).toFixed(0)}–${Number(scoreHigh).toFixed(0)}" range</small>`
+                            : ""
+                        }
+                      </div>
+
+                      <div>
+                        <span>
+                          Age
+                        </span>
+
+                        <strong>
+                          ${escapeHtml(bestBuck.estimated_age_class || "Unknown")}
+                        </strong>
+                      </div>
+
+                      <div>
+                        <span>
+                          View
+                        </span>
+
+                        <strong>
+                          ${escapeHtml((bestBuck.view_angle || "unknown").replaceAll("_", " "))}
+                        </strong>
+                      </div>
+                    </div>
+                  `
+                  : ""
+              }
+
+              ${
+                traits.length
+                  ? `
+                    <div class="ai-analysis-traits">
+                      ${traits.map(trait => `<span class="meta-chip">${escapeHtml(trait)}</span>`).join("")}
+                    </div>
+                  `
+                  : ""
+              }
+
+              <div class="small muted">
+                ${
+                  row.captured_at
+                    ? new Date(row.captured_at).toLocaleString()
+                    : row.uploaded_at
+                      ? new Date(row.uploaded_at).toLocaleString()
+                      : "Date unavailable"
+                }
+              </div>
+
+            </article>
+          `;
+        }
+      )
+      .join("");
 }
+
+
 
 
 function moveSetupToAreaIntelligence() {
@@ -1111,11 +1696,9 @@ function moveSetupToAreaIntelligence() {
     [
       $("propertyName"),
       $("cameraName"),
-      $("cameraCards"),
       $("photoUpload"),
       $("uploadProperty"),
-      $("uploadCamera"),
-      $("recentPhotos")
+      $("uploadCamera")
     ]
     .filter(Boolean);
 
@@ -2415,6 +2998,7 @@ function setupTabs() {
               makeDeerProfilePrimary();
               cleanupTabRoles();
               renderDeerProfiles();
+              renderFirstTabIntelligence();
             }
 
 
@@ -2502,6 +3086,8 @@ async function refreshPrivateData() {
 
   try {
     renderPrivate();
+    ensureDeerIntelligenceHome();
+    renderFirstTabIntelligence();
   } catch (error) {
     console.error(
       "HOSE private render error:",
@@ -3415,6 +4001,7 @@ async function uploadPhotos() {
   ]);
 
   renderDeerProfiles();
+  renderFirstTabIntelligence();
 
   $("uploadProgress").textContent =
     `Finished. ${uploaded} uploaded, `

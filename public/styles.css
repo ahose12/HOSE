@@ -2017,3 +2017,188 @@ a{
     grid-template-columns: 1fr 1fr;
   }
 }
+
+
+/* ============================================================
+   HOSE FIRST TAB — DEER + TRAIL CAM INTELLIGENCE + AI ANALYSIS
+   ============================================================ */
+
+#deerIntelligenceHome {
+  width: 100%;
+  display: grid;
+  gap: 18px;
+}
+
+#deerProfileMainSection,
+#deerProfileMainHost,
+#deerProfileMainHost #deerCards {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+#deerProfileMainSection {
+  order: 0;
+}
+
+#deerProfileMainHost .deer-focus-shell,
+#deerProfileMainHost .deer-stack-card,
+#deerProfileMainHost .deer-compare-shell {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+/*
+ * Preserve the manageable profile proportion:
+ * broad across the page, but image + metadata should fit sensibly.
+ */
+#deerProfileMainHost .deer-stack-image {
+  height: clamp(310px, 42vh, 455px) !important;
+}
+
+#deerProfileMainHost .deer-stack-image img {
+  object-fit: contain !important;
+}
+
+.first-tab-intel-section {
+  width: 100%;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--card);
+}
+
+.section-heading-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+  margin-bottom: 14px;
+}
+
+.section-heading-row h2 {
+  margin: 3px 0 5px;
+}
+
+.first-tab-intel-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(
+      auto-fit,
+      minmax(220px, 1fr)
+    );
+  gap: 10px;
+}
+
+.first-tab-summary-card {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: rgba(255,255,255,.025);
+}
+
+.first-tab-summary-feature {
+  grid-column: 1 / -1;
+}
+
+.summary-metric-row {
+  display: grid;
+  grid-template-columns:
+    repeat(4, minmax(0,1fr));
+  gap: 8px;
+}
+
+.summary-metric-row > div {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.summary-metric-row span,
+.ai-analysis-buck span {
+  display: block;
+  font-size: .69rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  opacity: .65;
+}
+
+.summary-metric-row strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 1.4rem;
+}
+
+.camera-intel-title,
+.ai-analysis-title-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: start;
+}
+
+.camera-intel-metrics,
+.ai-analysis-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin: 9px 0;
+  font-size: .82rem;
+  font-weight: 700;
+}
+
+.ai-analysis-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(
+      auto-fit,
+      minmax(280px,1fr)
+    );
+  gap: 10px;
+}
+
+.ai-analysis-card {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: rgba(255,255,255,.025);
+}
+
+.ai-analysis-buck {
+  display: grid;
+  grid-template-columns:
+    repeat(3,minmax(0,1fr));
+  gap: 7px;
+  margin: 10px 0;
+}
+
+.ai-analysis-buck > div {
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+
+.ai-analysis-buck strong {
+  display: block;
+  margin-top: 4px;
+}
+
+.ai-analysis-buck small {
+  display: block;
+  margin-top: 3px;
+}
+
+.ai-analysis-traits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 9px;
+}
+
+@media(max-width: 650px) {
+  .summary-metric-row,
+  .ai-analysis-buck {
+    grid-template-columns: 1fr 1fr;
+  }
+}
