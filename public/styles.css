@@ -431,3 +431,47 @@ a{
 .map-action{height:42px;align-self:end}
 #areaMap{height:520px;border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-bottom:14px}
 @media(max-width:800px){.map-control-grid{grid-template-columns:1fr}#areaMap{height:410px}}
+
+
+/* HOSE property-location workflow */
+.property-map-row {
+  grid-template-columns: 1.15fr .8fr 1.15fr .8fr;
+}
+
+.property-location-control {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.control-label {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 5px;
+}
+
+.property-location-control .map-action {
+  width: 100%;
+  min-height: 42px;
+}
+
+.property-location-status {
+  margin: 8px 0 14px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel3);
+}
+
+@media(max-width: 900px) {
+  .property-map-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media(max-width: 650px) {
+  .property-map-row {
+    grid-template-columns: 1fr;
+  }
+}

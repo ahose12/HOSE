@@ -637,14 +637,25 @@
       </div>
 
       <article class="intel-card">
-        <div class="map-control-grid">
+        <div class="map-control-grid property-map-row">
           <label>Property
             <select id="mapProperty"><option value="">Choose property…</option></select>
           </label>
+
+          <div class="property-location-control">
+            <span class="control-label">Property location</span>
+            <button id="setPropertyLocationBtn" class="secondary map-action" type="button">📍 Set Property Location</button>
+          </div>
+
           <label>Camera to place
             <select id="mapCamera"><option value="">Choose camera…</option></select>
           </label>
+
           <button id="placeCameraBtn" class="primary map-action" type="button">📷 Place Camera</button>
+        </div>
+
+        <div id="propertyLocationStatus" class="small property-location-status">
+          Choose a property, then set its approximate center on the map before placing cameras or stands.
         </div>
 
         <div class="map-control-grid">
@@ -877,7 +888,7 @@
 
 <script src="supabase-config.js"></script>
 
-<script src="app.js?v=20260824-matched-auth-area1"></script>
+<script src="app.js?v=20260824-property-location1"></script>
 
 </body>
 </html>

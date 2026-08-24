@@ -1573,19 +1573,82 @@ function syncAreaSelectors() {
     $("mapDeer").value = oldDeer;
   }
 
+  const selectedProperty =
+    properties.find(p => p.id === propertyId);
+
+  const propertyLocated =
+    selectedProperty &&
+    Number.isFinite(Number(selectedProperty.lat)) &&
+    Number.isFinite(Number(selectedProperty.lon));
+
+  if ($("propertyLocationStatus")) {
+    if (!selectedProperty) {
+      $("propertyLocationStatus").textContent =
+        "Choose a property, then set its approximate center on the map.";
+    } else if (!propertyLocated) {
+      $("propertyLocationStatus").textContent =
+        `${selectedProperty.name} has not been located yet. Click Set Property Location, then click the farm on the map.`;
+    } else {
+      $("propertyLocationStatus").textContent =
+        `📍 ${selectedProperty.name} location saved. Cameras and stands can now be placed relative to this farm.`;
+    }
+  }
+
   if ($("placementMessage")) {
     if (!propertyId) {
       $("placementMessage").textContent =
-        "Choose a property. The satellite map will stay visible.";
+        "Choose a property first.";
+    } else if (!propertyLocated) {
+      $("placementMessage").textContent =
+        "Set this property's location before placing cameras or stands.";
     } else if (!cams.length) {
       $("placementMessage").textContent =
-        "Property loaded, but it has no cameras yet. Create a camera in My Deer Intelligence.";
+        "Property located. No cameras are saved for this property yet.";
     } else {
       $("placementMessage").textContent =
-        `${cams.length} camera${cams.length === 1 ? "" : "s"} loaded for this property. Choose one and click Place Camera.`;
+        `${cams.length} camera${cams.length === 1 ? "" : "s"} loaded. Choose one and click Place Camera.`;
+    }
+  }
+
+  if (
+    areaMap &&
+    propertyLocated
+  ) {
+    const hasMappedCamera =
+      cams.some(
+        c =>
+          Number.isFinite(Number(c.lat)) &&
+          Number.isFinite(Number(c.lon))
+      );
+
+    const hasMappedStand =
+      propertyStands.some(
+        s =>
+          Number.isFinite(Number(s.lat)) &&
+          Number.isFinite(Number(s.lon))
+      );
+
+    if (!hasMappedCamera && !hasMappedStand) {
+      areaMap.setView(
+        [
+          Number(selectedProperty.lat),
+          Number(selectedProperty.lon)
+        ],
+        17
+      );
     }
   }
 }
+
+function propertyMapIcon() {
+  return L.divIcon({
+    className: "",
+    html: '<div style="width:42px;height:42px;border-radius:50%;background:#20301f;border:3px solid #f1f5f0;display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 2px 10px rgba(0,0,0,.55)">📍</div>',
+    iconSize: [42,42],
+    iconAnchor: [21,21]
+  });
+}
+
 
 function cameraMapIcon() {
   return L.divIcon({
@@ -1627,7 +1690,32 @@ function renderAreaMap() {
 
   const cams = cameras.filter(c => c.property_id === propertyId);
   const propertyStands = stands.filter(s => s.property_id === propertyId);
+  const selectedProperty = properties.find(p => p.id === propertyId);
   const bounds = [];
+
+  if (
+    selectedProperty &&
+    Number.isFinite(Number(selectedProperty.lat)) &&
+    Number.isFinite(Number(selectedProperty.lon))
+  ) {
+    const propertyLat = Number(selectedProperty.lat);
+    const propertyLon = Number(selectedProperty.lon);
+
+    L.marker(
+      [propertyLat, propertyLon],
+      {
+        icon: propertyMapIcon(),
+        draggable: false,
+        zIndexOffset: -100
+      }
+    )
+      .addTo(areaLayer)
+      .bindPopup(
+        `<b>📍 ${selectedProperty.name}</b><br>Approximate property center`
+      );
+
+    bounds.push([propertyLat, propertyLon]);
+  }
 
   cams.filter(c => Number.isFinite(Number(c.lat)) && Number.isFinite(Number(c.lon))).forEach(c => {
     const stats = cameraStats(c.id);
@@ -1667,8 +1755,10 @@ function renderAreaMap() {
     bounds.push([Number(s.lat), Number(s.lon)]);
   });
 
-  if (bounds.length) {
-    areaMap.fitBounds(bounds, { padding: [40,40], maxZoom: 16 });
+  if (bounds.length === 1 && selectedProperty) {
+    areaMap.setView(bounds[0], 17);
+  } else if (bounds.length > 1) {
+    areaMap.fitBounds(bounds, { padding: [40,40], maxZoom: 17 });
   }
 
   const propertySightings = sightings.filter(s => s.property_id === propertyId);
@@ -1680,6 +1770,71 @@ function renderAreaMap() {
   renderCameraActivity();
   renderMovementLine();
 }
+
+async function savePropertyLocation(id, lat, lon) {
+  const {
+    data,
+    error
+  } =
+    await sb
+      .from("properties")
+      .update({
+        lat,
+        lon
+      })
+      .eq("id", id)
+      .eq("user_id", currentUser.id)
+      .select()
+      .single();
+
+  if (error) {
+    $("placementMessage").textContent =
+      "Could not save property location: " + error.message;
+    return;
+  }
+
+  await loadProperties();
+
+  if ($("mapProperty")) {
+    $("mapProperty").value = id;
+  }
+
+  syncAreaSelectors();
+
+  $("placementMessage").textContent =
+    `📍 ${data.name || "Property"} location saved. Now place your cameras and stands.`;
+
+  renderAreaMap();
+}
+
+
+function beginPropertyPlacement() {
+  const propertyId =
+    $("mapProperty").value;
+
+  if (!propertyId) {
+    $("placementMessage").textContent =
+      "Choose a property first.";
+    return;
+  }
+
+  const property =
+    properties.find(
+      p => p.id === propertyId
+    );
+
+  placementMode = {
+    type: "property",
+    id: propertyId
+  };
+
+  $("areaMap").style.cursor =
+    "crosshair";
+
+  $("placementMessage").textContent =
+    `📍 LOCATING ${property?.name || "PROPERTY"} — click roughly the center of the farm/property on the map.`;
+}
+
 
 async function saveCameraLocation(id, lat, lon) {
   const { data, error } = await sb
@@ -1731,43 +1886,122 @@ async function saveStandLocation(id, lat, lon) {
 
 async function handleAreaMapClick(e) {
   if (!placementMode) return;
-  if (placementMode.type === "camera") {
-    await saveCameraLocation(placementMode.id, e.latlng.lat, e.latlng.lng);
-  } else {
-    await saveStandLocation(placementMode.id, e.latlng.lat, e.latlng.lng);
-  }
-  placementMode = null;
+
+  const mode =
+    placementMode;
+
+  placementMode =
+    null;
 
   if ($("areaMap")) {
-    $("areaMap").style.cursor = "";
+    $("areaMap").style.cursor =
+      "";
+  }
+
+  if (mode.type === "property") {
+    await savePropertyLocation(
+      mode.id,
+      e.latlng.lat,
+      e.latlng.lng
+    );
+  } else if (mode.type === "camera") {
+    await saveCameraLocation(
+      mode.id,
+      e.latlng.lat,
+      e.latlng.lng
+    );
+  } else if (mode.type === "stand") {
+    await saveStandLocation(
+      mode.id,
+      e.latlng.lat,
+      e.latlng.lng
+    );
   }
 }
 
 function beginCameraPlacement() {
-  const id = $("mapCamera").value;
-  if (!id) {
-    $("placementMessage").textContent = "Choose a camera first.";
+  const propertyId =
+    $("mapProperty").value;
+
+  const property =
+    properties.find(
+      p => p.id === propertyId
+    );
+
+  const propertyLocated =
+    property &&
+    Number.isFinite(Number(property.lat)) &&
+    Number.isFinite(Number(property.lon));
+
+  if (!propertyLocated) {
+    $("placementMessage").textContent =
+      "Set the property location first.";
     return;
   }
-  placementMode = { type: "camera", id };
-  const row = cameras.find(c => c.id === id);
 
-  $("areaMap").style.cursor = "crosshair";
+  const id =
+    $("mapCamera").value;
+
+  if (!id) {
+    $("placementMessage").textContent =
+      "Choose a camera first.";
+    return;
+  }
+
+  placementMode = {
+    type: "camera",
+    id
+  };
+
+  const row =
+    cameras.find(c => c.id === id);
+
+  $("areaMap").style.cursor =
+    "crosshair";
 
   $("placementMessage").textContent =
     `📷 PLACING ${row?.name || "CAMERA"} — click its exact location on the satellite image.`;
 }
 
 function beginStandPlacement() {
-  const id = $("mapStand").value;
-  if (!id) {
-    $("placementMessage").textContent = "Choose a stand first.";
+  const propertyId =
+    $("mapProperty").value;
+
+  const property =
+    properties.find(
+      p => p.id === propertyId
+    );
+
+  const propertyLocated =
+    property &&
+    Number.isFinite(Number(property.lat)) &&
+    Number.isFinite(Number(property.lon));
+
+  if (!propertyLocated) {
+    $("placementMessage").textContent =
+      "Set the property location first.";
     return;
   }
-  placementMode = { type: "stand", id };
-  const row = stands.find(s => s.id === id);
 
-  $("areaMap").style.cursor = "crosshair";
+  const id =
+    $("mapStand").value;
+
+  if (!id) {
+    $("placementMessage").textContent =
+      "Choose a stand first.";
+    return;
+  }
+
+  placementMode = {
+    type: "stand",
+    id
+  };
+
+  const row =
+    stands.find(s => s.id === id);
+
+  $("areaMap").style.cursor =
+    "crosshair";
 
   $("placementMessage").textContent =
     `🌲 PLACING ${row?.name || "STAND"} — click its exact location on the satellite image.`;
@@ -2684,6 +2918,15 @@ async function init() {
         .addEventListener(
           "change",
           renderMovementLine
+        );
+    }
+
+
+    if ($("setPropertyLocationBtn")) {
+      $("setPropertyLocationBtn")
+        .addEventListener(
+          "click",
+          beginPropertyPlacement
         );
     }
 
