@@ -1900,6 +1900,20 @@ function renderDeerProfiles() {
                         ? `<div class="small muted">${deer.identity_fingerprint.seasons[deer.identity_fingerprint.latest_season].score.angle_family_count} complementary angle group(s) contributing to confidence.</div>`
                         : ""
                     }
+                    ${
+                      deer.calibration_applied
+                        ? `
+                          <div class="small calibration-applied">
+                            HOSE calibration applied
+                            ${
+                              deer.calibration_sample_count != null
+                                ? ` · ${deer.calibration_sample_count} feedback sample${Number(deer.calibration_sample_count) === 1 ? "" : "s"}`
+                                : ""
+                            }
+                          </div>
+                        `
+                        : ""
+                    }
                     <div class="small muted">Photo estimate only — not an official B&C measurement.</div>
                   </div>
                 `
@@ -3103,6 +3117,14 @@ function ensureScoreFeedbackUi() {
       </label>
 
       <label>
+        Correction type
+        <select id="scoreFeedbackType">
+          <option value="hunter_estimate">Hunter estimate</option>
+          <option value="verified_measurement">Verified / measured score</option>
+        </select>
+      </label>
+
+      <label>
         Your corrected estimate / known gross score
         <input
           id="scoreFeedbackCorrected"
@@ -3184,6 +3206,9 @@ function openScoreFeedback(deerId) {
 
   $("scoreFeedbackRating").value =
     "";
+
+  $("scoreFeedbackType").value =
+    "hunter_estimate";
 
   $("scoreFeedbackCorrected").value =
     deer.user_estimated_score
@@ -3268,6 +3293,87 @@ async function saveScoreFeedback() {
 
         corrected_score:
           correctedScore,
+
+        correction_type:
+          $("scoreFeedbackType").value,
+
+        antler_points_visible:
+          deerProfiles.find(
+            row =>
+              row.id === deerId
+          )?.identity_fingerprint
+            ?.seasons
+            ? null
+            : null,
+
+        size_class:
+          (() => {
+            const deer =
+              deerProfiles.find(
+                row =>
+                  row.id === deerId
+              );
+
+            const score =
+              Number(
+                deer?.ai_score_estimate
+                || 0
+              );
+
+            if (score < 35) {
+              return "spike_small";
+            }
+
+            if (score < 70) {
+              return "small";
+            }
+
+            if (score < 110) {
+              return "medium";
+            }
+
+            if (score < 140) {
+              return "large";
+            }
+
+            return "very_large";
+          })(),
+
+        signed_error:
+          correctedScore != null
+          &&
+          deerProfiles.find(
+            row =>
+              row.id === deerId
+          )?.ai_score_estimate != null
+            ? Number(
+                deerProfiles.find(
+                  row =>
+                    row.id === deerId
+                ).ai_score_estimate
+              )
+              -
+              correctedScore
+            : null,
+
+        absolute_error:
+          correctedScore != null
+          &&
+          deerProfiles.find(
+            row =>
+              row.id === deerId
+          )?.ai_score_estimate != null
+            ? Math.abs(
+                Number(
+                  deerProfiles.find(
+                    row =>
+                      row.id === deerId
+                  ).ai_score_estimate
+                )
+                -
+                correctedScore
+              )
+            : null,
 
         notes:
           $("scoreFeedbackNotes").value.trim()

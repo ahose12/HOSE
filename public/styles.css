@@ -853,3 +853,11 @@ a{
 #scoreFeedbackModal .button-row {
   margin-top: 12px;
 }
+
+
+/* HOSE score calibration */
+.calibration-applied {
+  margin-top: 5px;
+  font-weight: 800;
+  color: var(--accent);
+}
