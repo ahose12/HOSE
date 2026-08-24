@@ -17,13 +17,6 @@ let currentUser = null;
 let properties = [];
 let cameras = [];
 let deerProfiles = [];
-let stands = [];
-let sightings = [];
-
-let areaMap = null;
-let areaLayer = null;
-let movementLayer = null;
-let placementMode = null;
 
 
 /* ============================================================
@@ -102,7 +95,7 @@ async function applySession(session) {
 
   await refreshPrivateData();
 
-  if (!map) {
+  if (!map && !document.getElementById("areaMap")) {
     initMapSafe();
   }
 }
@@ -179,28 +172,53 @@ async function signOut() {
    ============================================================ */
 
 function setupTabs() {
-  document.querySelectorAll(".app-tab").forEach(button => {
-    button.addEventListener("click", () => {
-      document.querySelectorAll(".app-tab").forEach(tab => tab.classList.remove("active"));
-      button.classList.add("active");
+  document
+    .querySelectorAll(".app-tab")
+    .forEach(button => {
+      button.addEventListener(
+        "click",
+        () => {
+          document
+            .querySelectorAll(".app-tab")
+            .forEach(tab =>
+              tab.classList.remove("active")
+            );
 
-      const selected = button.dataset.tab;
-      $("tab-my-intel").classList.toggle("hidden", selected !== "my-intel");
-      $("tab-area-intel").classList.toggle("hidden", selected !== "area-intel");
-      $("tab-explore-plan").classList.toggle("hidden", selected !== "explore-plan");
+          button.classList.add("active");
 
-      if (selected === "area-intel") {
-        initAreaMap();
-        syncAreaSelectors();
-        renderAreaMap();
-        setTimeout(() => areaMap?.invalidateSize(), 100);
-      }
+          const selected =
+            button.dataset.tab;
 
-      if (selected === "explore-plan" && map) {
-        setTimeout(() => map.invalidateSize(), 100);
-      }
+          $("tab-my-intel").classList.toggle(
+            "hidden",
+            selected !== "my-intel"
+          );
+
+          $("tab-area-intel").classList.toggle(
+            "hidden",
+            selected !== "area-intel"
+          );
+
+          if (document.getElementById("tab-explore-plan")) {
+            $("tab-explore-plan").classList.toggle(
+              "hidden",
+              selected !== "explore-plan"
+            );
+          }
+
+          if (
+            selected === "area-intel" &&
+            !document.getElementById("areaMap") &&
+            map
+          ) {
+            setTimeout(
+              () => map.invalidateSize(),
+              100
+            );
+          }
+        }
+      );
     });
-  });
 }
 
 
@@ -212,15 +230,11 @@ async function refreshPrivateData() {
   await Promise.all([
     loadProperties(),
     loadCameras(),
-    loadDeerProfiles(),
-    loadStands(),
-    loadSightings()
+    loadDeerProfiles()
   ]);
 
   renderPrivate();
-  syncAreaSelectors();
   await loadRecentPhotos();
-  if (areaMap) renderAreaMap();
 }
 
 
@@ -281,39 +295,6 @@ async function loadDeerProfiles() {
   }
 
   deerProfiles = data || [];
-}
-
-
-async function loadStands() {
-  const { data, error } = await sb
-    .from("stands")
-    .select("*")
-    .eq("active", true)
-    .order("created_at", { ascending: true });
-
-  if (error) {
-    console.error("Stand load failed:", error);
-    stands = [];
-    return;
-  }
-
-  stands = data || [];
-}
-
-
-async function loadSightings() {
-  const { data, error } = await sb
-    .from("sightings")
-    .select("*")
-    .order("captured_at", { ascending: true, nullsFirst: false });
-
-  if (error) {
-    console.error("Sightings load failed:", error);
-    sightings = [];
-    return;
-  }
-
-  sightings = data || [];
 }
 
 
@@ -438,7 +419,7 @@ async function addCamera() {
   }
 
   $("cameraMessage").textContent =
-    "Camera added.";
+    "Camera added. It will appear in Area Intelligence for this property.";
 
   $("cameraName").value = "";
   $("cameraNotes").value = "";
@@ -1113,313 +1094,6 @@ function clearPrivateUi() {
 
 
 /* ============================================================
-   PRIVATE AREA INTELLIGENCE
-   ============================================================ */
-
-function initAreaMap() {
-  if (areaMap || typeof L === "undefined" || !$("areaMap")) return;
-
-  areaMap = L.map("areaMap").setView([34.65, -86.55], 9);
-
-  L.tileLayer(
-    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    {
-      maxZoom: 20,
-      attribution: "&copy; OpenStreetMap contributors"
-    }
-  ).addTo(areaMap);
-
-  areaLayer = L.layerGroup().addTo(areaMap);
-  movementLayer = L.layerGroup().addTo(areaMap);
-  areaMap.on("click", handleAreaMapClick);
-}
-
-function syncAreaSelectors() {
-  if (!$("mapProperty")) return;
-
-  const currentProperty = $("mapProperty").value;
-  $("mapProperty").innerHTML =
-    '<option value="">Choose property…</option>' +
-    properties.map(p => `<option value="${p.id}">${p.name}</option>`).join("");
-
-  if (properties.some(p => p.id === currentProperty)) {
-    $("mapProperty").value = currentProperty;
-  } else if (properties.length === 1) {
-    $("mapProperty").value = properties[0].id;
-  }
-
-  const propertyId = $("mapProperty").value;
-  const cams = propertyId ? cameras.filter(c => c.property_id === propertyId) : [];
-  const propertyStands = propertyId ? stands.filter(s => s.property_id === propertyId) : [];
-  const deer = propertyId ? deerProfiles.filter(d => d.property_id === propertyId) : [];
-
-  $("mapCamera").innerHTML =
-    '<option value="">Choose camera…</option>' +
-    cams.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
-
-  $("mapStand").innerHTML =
-    '<option value="">Choose stand…</option>' +
-    propertyStands.map(s => `<option value="${s.id}">${s.name}</option>`).join("");
-
-  $("mapDeer").innerHTML =
-    '<option value="">All deer / no movement line</option>' +
-    deer.map(d => `<option value="${d.id}">${d.nickname || d.deer_code || "Unnamed deer"}</option>`).join("");
-}
-
-function cameraMapIcon() {
-  return L.divIcon({
-    className: "",
-    html: '<div style="width:38px;height:38px;border-radius:50%;background:#142018;border:2px solid #a5be86;display:flex;align-items:center;justify-content:center;font-size:21px">📷</div>',
-    iconSize: [38,38],
-    iconAnchor: [19,19]
-  });
-}
-
-function standMapIcon() {
-  return L.divIcon({
-    className: "",
-    html: '<div style="width:38px;height:38px;border-radius:50%;background:#201b14;border:2px solid #d9c47a;display:flex;align-items:center;justify-content:center;font-size:21px">🌲</div>',
-    iconSize: [38,38],
-    iconAnchor: [19,19]
-  });
-}
-
-function cameraStats(cameraId) {
-  const rows = sightings.filter(s => s.camera_id === cameraId);
-  return {
-    sightings: rows.length,
-    deer: rows.reduce((n,s) => n + Number(s.deer_count || 0), 0),
-    bucks: rows.reduce((n,s) => n + Number(s.buck_count || 0), 0),
-    does: rows.reduce((n,s) => n + Number(s.doe_count || 0), 0),
-    profiles: new Set(rows.map(s => s.deer_profile_id).filter(Boolean)).size
-  };
-}
-
-function renderAreaMap() {
-  if (!areaMap || !areaLayer || !$("mapProperty")) return;
-
-  areaLayer.clearLayers();
-  movementLayer.clearLayers();
-
-  const propertyId = $("mapProperty").value;
-  if (!propertyId) return;
-
-  const cams = cameras.filter(c => c.property_id === propertyId);
-  const propertyStands = stands.filter(s => s.property_id === propertyId);
-  const bounds = [];
-
-  cams.filter(c => Number.isFinite(Number(c.lat)) && Number.isFinite(Number(c.lon))).forEach(c => {
-    const stats = cameraStats(c.id);
-    const marker = L.marker([Number(c.lat), Number(c.lon)], {
-      icon: cameraMapIcon(),
-      draggable: true
-    }).addTo(areaLayer);
-
-    marker.bindPopup(`
-      <b>📷 ${c.name}</b><br>
-      ${c.primary_habitat || "Habitat not set"}${c.facing ? ` · Facing ${c.facing}` : ""}<br><br>
-      ${stats.sightings} sighting records<br>
-      🦌 ${stats.deer} deer · ♂ ${stats.bucks} bucks · ♀ ${stats.does} does<br>
-      ${stats.profiles} identified deer profiles
-    `);
-
-    marker.on("dragend", async e => {
-      const p = e.target.getLatLng();
-      await saveCameraLocation(c.id, p.lat, p.lng);
-    });
-
-    bounds.push([Number(c.lat), Number(c.lon)]);
-  });
-
-  propertyStands.filter(s => Number.isFinite(Number(s.lat)) && Number.isFinite(Number(s.lon))).forEach(s => {
-    const marker = L.marker([Number(s.lat), Number(s.lon)], {
-      icon: standMapIcon(),
-      draggable: true
-    }).addTo(areaLayer);
-
-    marker.bindPopup(`<b>🌲 ${s.name}</b><br>${s.primary_habitat || "Habitat not set"}`);
-    marker.on("dragend", async e => {
-      const p = e.target.getLatLng();
-      await saveStandLocation(s.id, p.lat, p.lng);
-    });
-
-    bounds.push([Number(s.lat), Number(s.lon)]);
-  });
-
-  if (bounds.length) {
-    areaMap.fitBounds(bounds, { padding: [40,40], maxZoom: 16 });
-  }
-
-  const propertySightings = sightings.filter(s => s.property_id === propertyId);
-  $("areaCameraCount").textContent = cams.filter(c => c.lat != null && c.lon != null).length;
-  $("areaStandCount").textContent = propertyStands.filter(s => s.lat != null && s.lon != null).length;
-  $("areaSightingCount").textContent = propertySightings.length;
-  $("areaBuckCount").textContent = propertySightings.reduce((n,s) => n + Number(s.buck_count || 0), 0);
-
-  renderCameraActivity();
-  renderMovementLine();
-}
-
-async function saveCameraLocation(id, lat, lon) {
-  const { error } = await sb.from("cameras").update({ lat, lon }).eq("id", id);
-  if (error) {
-    $("placementMessage").textContent = error.message;
-    return;
-  }
-
-  const row = cameras.find(c => c.id === id);
-  if (row) { row.lat = lat; row.lon = lon; }
-  $("placementMessage").textContent = "Camera location saved. HOSE can now tie its sightings to this exact area.";
-  renderAreaMap();
-}
-
-async function saveStandLocation(id, lat, lon) {
-  const { error } = await sb.from("stands").update({ lat, lon }).eq("id", id);
-  if (error) {
-    $("placementMessage").textContent = error.message;
-    return;
-  }
-
-  const row = stands.find(s => s.id === id);
-  if (row) { row.lat = lat; row.lon = lon; }
-  $("placementMessage").textContent = "Stand location saved.";
-  renderAreaMap();
-}
-
-async function handleAreaMapClick(e) {
-  if (!placementMode) return;
-  if (placementMode.type === "camera") {
-    await saveCameraLocation(placementMode.id, e.latlng.lat, e.latlng.lng);
-  } else {
-    await saveStandLocation(placementMode.id, e.latlng.lat, e.latlng.lng);
-  }
-  placementMode = null;
-}
-
-function beginCameraPlacement() {
-  const id = $("mapCamera").value;
-  if (!id) {
-    $("placementMessage").textContent = "Choose a camera first.";
-    return;
-  }
-  placementMode = { type: "camera", id };
-  const row = cameras.find(c => c.id === id);
-  $("placementMessage").textContent = `Click the real location of ${row?.name || "the camera"} on the map.`;
-}
-
-function beginStandPlacement() {
-  const id = $("mapStand").value;
-  if (!id) {
-    $("placementMessage").textContent = "Choose a stand first.";
-    return;
-  }
-  placementMode = { type: "stand", id };
-  const row = stands.find(s => s.id === id);
-  $("placementMessage").textContent = `Click the real location of ${row?.name || "the stand"} on the map.`;
-}
-
-async function addMappedStand() {
-  const propertyId = $("mapProperty").value;
-  const name = $("standName").value.trim();
-
-  if (!propertyId || !name) {
-    $("placementMessage").textContent = "Choose a property and enter a stand name.";
-    return;
-  }
-
-  const { data, error } = await sb.from("stands").insert({
-    user_id: currentUser.id,
-    property_id: propertyId,
-    name,
-    primary_habitat: $("standHabitat").value,
-    active: true
-  }).select().single();
-
-  if (error) {
-    $("placementMessage").textContent = error.message;
-    return;
-  }
-
-  $("standName").value = "";
-  await loadStands();
-  syncAreaSelectors();
-  $("mapStand").value = data.id;
-  $("placementMessage").textContent = `${data.name} created. Click Place Stand, then click its location.`;
-}
-
-function renderCameraActivity() {
-  const propertyId = $("mapProperty").value;
-  const rows = cameras.filter(c => c.property_id === propertyId);
-
-  $("cameraActivityCards").innerHTML = rows.map(c => {
-    const s = cameraStats(c.id);
-    return `<div class="stack-item">
-      <strong>📷 ${c.name}</strong>
-      <div class="small muted">${c.primary_habitat || "Habitat not set"} · ${c.lat != null ? "Mapped" : "Not mapped"}</div>
-      <div class="meta-row">
-        <span class="meta-chip">${s.sightings} sightings</span>
-        <span class="meta-chip">${s.deer} deer</span>
-        <span class="meta-chip">${s.bucks} bucks</span>
-        <span class="meta-chip">${s.profiles} identified deer</span>
-      </div>
-    </div>`;
-  }).join("") || '<div class="muted">No cameras for this property.</div>';
-}
-
-function renderMovementLine() {
-  if (!movementLayer || !$("mapDeer")) return;
-  movementLayer.clearLayers();
-
-  const deerId = $("mapDeer").value;
-  const propertyId = $("mapProperty").value;
-
-  if (!deerId) {
-    $("spatialTitle").textContent = "Property Pattern";
-    $("spatialSummary").innerHTML = '<div class="muted">Choose an identified deer to visualize its mapped camera history.</div>';
-    return;
-  }
-
-  const deer = deerProfiles.find(d => d.id === deerId);
-  const rows = sightings
-    .filter(s => s.property_id === propertyId && s.deer_profile_id === deerId)
-    .sort((a,b) => new Date(a.captured_at || 0) - new Date(b.captured_at || 0));
-
-  const points = rows.map(s => {
-    const camera = cameras.find(c => c.id === s.camera_id);
-    if (!camera || camera.lat == null || camera.lon == null) return null;
-    return { camera, sighting: s, lat: Number(camera.lat), lon: Number(camera.lon) };
-  }).filter(Boolean);
-
-  $("spatialTitle").textContent = `${deer?.nickname || deer?.deer_code || "Deer"} Spatial Pattern`;
-
-  if (!points.length) {
-    $("spatialSummary").innerHTML = '<div class="muted">This deer has no sightings tied to mapped cameras yet.</div>';
-    return;
-  }
-
-  const latLngs = points.map(p => [p.lat, p.lon]);
-  if (latLngs.length >= 2) {
-    L.polyline(latLngs, { weight: 4, opacity: .75, dashArray: "7 7" }).addTo(movementLayer);
-  }
-
-  points.forEach((p,i) => {
-    L.circleMarker([p.lat,p.lon], { radius: 7, weight: 2, fillOpacity: .8 })
-      .addTo(movementLayer)
-      .bindPopup(`<b>${i+1}. ${p.camera.name}</b><br>${p.sighting.captured_at ? new Date(p.sighting.captured_at).toLocaleString() : "Time unavailable"}`);
-  });
-
-  const counts = {};
-  points.forEach(p => counts[p.camera.name] = (counts[p.camera.name] || 0) + 1);
-  const top = Object.entries(counts).sort((a,b) => b[1]-a[1])[0];
-
-  $("spatialSummary").innerHTML = `
-    <div class="stack-item"><strong>${points.length} mapped sightings</strong><div class="small muted">Across ${Object.keys(counts).length} mapped cameras.</div></div>
-    <div class="stack-item"><strong>Most used mapped camera</strong><div>${top ? `${top[0]} · ${top[1]} sightings` : "Not enough data"}</div></div>
-    <div class="stack-item"><strong>Next layer</strong><div class="small muted">We can now combine these exact locations with wind, weather, stand position, access, and habitat.</div></div>`;
-}
-
-
-/* ============================================================
    AREA INTELLIGENCE
    ============================================================ */
 
@@ -1952,68 +1626,153 @@ async function doSearch() {
    ============================================================ */
 
 async function init() {
-  if (!initSupabase()) return;
-
-  $("signInBtn").addEventListener("click", signIn);
-  $("signUpBtn").addEventListener("click", signUp);
-  $("signOutBtn").addEventListener("click", signOut);
-
-  await restoreSession();
-
-  try {
-    [cfg, publicLands, observations, outsideProfiles] = await Promise.all([
-      loadJson("config.json", {
+  [
+    cfg,
+    publicLands,
+    observations,
+    outsideProfiles
+  ] =
+  await Promise.all([
+    loadJson(
+      "config.json",
+      {
         default_radius_miles: 5,
-        radius_options: [1,3,5,10,15,25,50]
-      }),
-      loadJson("public_lands.json", []),
-      loadJson("observations.json", []),
-      loadJson("deer_profiles.json", [])
-    ]);
 
-    fillControls();
-    setupTabs();
+        radius_options: [
+          1,
+          3,
+          5,
+          10,
+          15,
+          25,
+          50
+        ]
+      }
+    ),
 
-    $("addPropertyBtn").addEventListener("click", addProperty);
-    $("addCameraBtn").addEventListener("click", addCamera);
-    $("refreshPhotosBtn").addEventListener("click", loadRecentPhotos);
+    loadJson(
+      "public_lands.json",
+      []
+    ),
 
-    $("propertySelect").addEventListener("change", () => {
-      $("uploadProperty").value = $("propertySelect").value;
-      renderCameraSelectors();
-      loadRecentPhotos();
-    });
+    loadJson(
+      "observations.json",
+      []
+    ),
 
-    $("uploadProperty").addEventListener("change", () => {
-      renderCameraSelectors();
-      loadRecentPhotos();
-    });
+    loadJson(
+      "deer_profiles.json",
+      []
+    )
+  ]);
 
-    $("photoUpload").addEventListener("change", e => {
-      const files = e.target.files;
-      $("uploadCount").textContent = `${files.length} file${files.length === 1 ? "" : "s"} selected`;
-      renderSelectedPreviews(files);
-    });
+  fillControls();
+  setupTabs();
 
-    $("processUploadBtn").addEventListener("click", uploadPhotos);
+  $("signInBtn")
+    .addEventListener(
+      "click",
+      signIn
+    );
 
-    $("mapProperty").addEventListener("change", () => {
-      syncAreaSelectors();
-      renderAreaMap();
-    });
-    $("mapDeer").addEventListener("change", renderMovementLine);
-    $("placeCameraBtn").addEventListener("click", beginCameraPlacement);
-    $("placeStandBtn").addEventListener("click", beginStandPlacement);
-    $("addStandBtn").addEventListener("click", addMappedStand);
+  $("signUpBtn")
+    .addEventListener(
+      "click",
+      signUp
+    );
 
-    $("searchBtn").addEventListener("click", doSearch);
-    $("address").addEventListener("keydown", e => {
-      if (e.key === "Enter") doSearch();
-    });
-  } catch (error) {
-    console.error("HOSE secondary initialization error:", error);
+  $("signOutBtn")
+    .addEventListener(
+      "click",
+      signOut
+    );
+
+  $("addPropertyBtn")
+    .addEventListener(
+      "click",
+      addProperty
+    );
+
+  $("addCameraBtn")
+    .addEventListener(
+      "click",
+      addCamera
+    );
+
+  $("propertySelect")
+    .addEventListener(
+      "change",
+      () => {
+        $("uploadProperty").value =
+          $("propertySelect").value;
+
+        renderCameraSelectors();
+        loadRecentPhotos();
+      }
+    );
+
+  $("uploadProperty")
+    .addEventListener(
+      "change",
+      () => {
+        renderCameraSelectors();
+        loadRecentPhotos();
+      }
+    );
+
+  $("photoUpload")
+    .addEventListener(
+      "change",
+      event => {
+        const files =
+          event.target.files;
+
+        $("uploadCount").textContent =
+          `${files.length} file${files.length === 1 ? "" : "s"} selected`;
+
+        renderSelectedPreviews(
+          files
+        );
+      }
+    );
+
+  $("processUploadBtn")
+    .addEventListener(
+      "click",
+      uploadPhotos
+    );
+
+  $("refreshPhotosBtn")
+    .addEventListener(
+      "click",
+      loadRecentPhotos
+    );
+
+  $("searchBtn")
+    .addEventListener(
+      "click",
+      doSearch
+    );
+
+  $("address")
+    .addEventListener(
+      "keydown",
+      event => {
+        if (
+          event.key === "Enter"
+        ) {
+          doSearch();
+        }
+      }
+    );
+
+  if (
+    initSupabase()
+  ) {
+    await restoreSession();
   }
 }
+
 
 window.renameDeer =
   renameDeer;
@@ -2023,3 +1782,672 @@ document.addEventListener(
   "DOMContentLoaded",
   init
 );
+
+
+/* ============================================================
+   HOSE CLEAN AREA INTELLIGENCE CONTROLLER
+   Satellite map + persistent Supabase cameras/stands.
+   Integrated into app.js -- DO NOT load area-map-fix.js.
+   ============================================================ */
+
+let hoseAreaMap = null;
+let hoseAreaMarkers = null;
+let hoseAreaMovement = null;
+let hoseAreaPlacement = null;
+let hoseAreaSatellite = null;
+let hoseAreaStreet = null;
+let hoseAreaStands = [];
+let hoseAreaSightings = [];
+
+function hoseHas(id) {
+  return !!document.getElementById(id);
+}
+
+function hoseAreaPropertyId() {
+  return hoseHas("mapProperty") ? $("mapProperty").value : "";
+}
+
+function hoseAreaCameraRows(propertyId) {
+  return (cameras || []).filter(c => !propertyId || c.property_id === propertyId);
+}
+
+function hoseAreaStandRows(propertyId) {
+  return (hoseAreaStands || []).filter(s => !propertyId || s.property_id === propertyId);
+}
+
+function hoseAreaDeerRows(propertyId) {
+  return (deerProfiles || []).filter(d => !propertyId || d.property_id === propertyId);
+}
+
+async function hoseReloadAreaData() {
+  if (!currentUser || !sb) return;
+
+  // Reload cameras from Supabase every time the Area tab opens.
+  // This prevents stale in-memory dropdowns when a camera was just created on another tab.
+  const cameraResult = await sb
+    .from("cameras")
+    .select("*, camera_features(feature_type)")
+    .eq("user_id", currentUser.id)
+    .eq("active", true)
+    .order("created_at", { ascending: true });
+
+  if (cameraResult.error) {
+    console.error("HOSE Area camera reload:", cameraResult.error);
+    if (hoseHas("placementMessage")) {
+      $("placementMessage").textContent =
+        "Could not load cameras: " + cameraResult.error.message;
+    }
+  } else {
+    cameras = cameraResult.data || [];
+  }
+
+  const standResult = await sb
+    .from("stands")
+    .select("*")
+    .eq("user_id", currentUser.id)
+    .eq("active", true)
+    .order("created_at", { ascending: true });
+
+  if (standResult.error) {
+    console.error("HOSE Area stand reload:", standResult.error);
+    hoseAreaStands = [];
+  } else {
+    hoseAreaStands = standResult.data || [];
+  }
+
+  const sightingResult = await sb
+    .from("sightings")
+    .select("*")
+    .eq("user_id", currentUser.id)
+    .order("captured_at", { ascending: true });
+
+  if (sightingResult.error) {
+    console.error("HOSE Area sighting reload:", sightingResult.error);
+    hoseAreaSightings = [];
+  } else {
+    hoseAreaSightings = sightingResult.data || [];
+  }
+
+  hoseSyncAreaSelectors();
+}
+
+function hoseSyncAreaSelectors() {
+  if (!hoseHas("mapProperty")) return;
+
+  const previousProperty = $("mapProperty").value;
+  const previousCamera = hoseHas("mapCamera") ? $("mapCamera").value : "";
+  const previousStand = hoseHas("mapStand") ? $("mapStand").value : "";
+  const previousDeer = hoseHas("mapDeer") ? $("mapDeer").value : "";
+
+  $("mapProperty").innerHTML =
+    '<option value="">Choose property…</option>' +
+    (properties || []).map(p => `<option value="${p.id}">${p.name}</option>`).join("");
+
+  if ((properties || []).some(p => p.id === previousProperty)) {
+    $("mapProperty").value = previousProperty;
+  } else if ((properties || []).length === 1) {
+    $("mapProperty").value = properties[0].id;
+  }
+
+  const propertyId = $("mapProperty").value;
+
+  if (hoseHas("mapCamera")) {
+    const rows = hoseAreaCameraRows(propertyId);
+    $("mapCamera").innerHTML =
+      '<option value="">Choose camera…</option>' +
+      rows.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
+    if (rows.some(c => c.id === previousCamera)) $("mapCamera").value = previousCamera;
+  }
+
+  if (hoseHas("mapStand")) {
+    const rows = hoseAreaStandRows(propertyId);
+    $("mapStand").innerHTML =
+      '<option value="">Choose stand…</option>' +
+      rows.map(s => `<option value="${s.id}">${s.name}</option>`).join("");
+    if (rows.some(s => s.id === previousStand)) $("mapStand").value = previousStand;
+  }
+
+  if (hoseHas("mapDeer")) {
+    const rows = hoseAreaDeerRows(propertyId);
+    $("mapDeer").innerHTML =
+      '<option value="">All deer / no movement line</option>' +
+      rows.map(d =>
+        `<option value="${d.id}">${d.nickname || d.deer_code || "Unnamed deer"}</option>`
+      ).join("");
+    if (rows.some(d => d.id === previousDeer)) $("mapDeer").value = previousDeer;
+  }
+}
+
+function hoseInitAreaMap() {
+  if (!hoseHas("areaMap") || typeof L === "undefined") return;
+
+  if (hoseAreaMap) {
+    setTimeout(() => hoseAreaMap.invalidateSize(), 50);
+    return;
+  }
+
+  const mapElement = $("areaMap");
+  mapElement.innerHTML = "";
+
+  hoseAreaMap = L.map("areaMap", {
+    zoomControl: true,
+    preferCanvas: true
+  }).setView([34.65, -86.55], 9);
+
+  hoseAreaSatellite = L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    {
+      maxZoom: 19,
+      attribution:
+        "Sources: Esri, Vantor, Earthstar Geographics, and the GIS User Community"
+    }
+  );
+
+  hoseAreaStreet = L.tileLayer(
+    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    {
+      maxZoom: 20,
+      attribution: "&copy; OpenStreetMap contributors"
+    }
+  );
+
+  hoseAreaSatellite.addTo(hoseAreaMap);
+
+  L.control.layers(
+    {
+      "Satellite / Aerial": hoseAreaSatellite,
+      "Street Map": hoseAreaStreet
+    },
+    {},
+    { position: "topright", collapsed: false }
+  ).addTo(hoseAreaMap);
+
+  hoseAreaMarkers = L.layerGroup().addTo(hoseAreaMap);
+  hoseAreaMovement = L.layerGroup().addTo(hoseAreaMap);
+
+  hoseAreaMap.on("click", hoseHandleAreaClick);
+
+  setTimeout(() => hoseAreaMap.invalidateSize(), 100);
+}
+
+function hoseCameraIcon() {
+  return L.divIcon({
+    className: "",
+    html:
+      '<div style="width:40px;height:40px;border-radius:50%;background:#142018;border:2px solid #a5be86;display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 2px 8px rgba(0,0,0,.45)">📷</div>',
+    iconSize: [40, 40],
+    iconAnchor: [20, 20]
+  });
+}
+
+function hoseStandIcon() {
+  return L.divIcon({
+    className: "",
+    html:
+      '<div style="width:40px;height:40px;border-radius:50%;background:#211b12;border:2px solid #d9c47a;display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 2px 8px rgba(0,0,0,.45)">🌲</div>',
+    iconSize: [40, 40],
+    iconAnchor: [20, 20]
+  });
+}
+
+function hoseCameraStats(cameraId) {
+  const rows = hoseAreaSightings.filter(s => s.camera_id === cameraId);
+  return {
+    records: rows.length,
+    deer: rows.reduce((n, s) => n + Number(s.deer_count || 0), 0),
+    bucks: rows.reduce((n, s) => n + Number(s.buck_count || 0), 0),
+    does: rows.reduce((n, s) => n + Number(s.doe_count || 0), 0),
+    known: new Set(rows.map(s => s.deer_profile_id).filter(Boolean)).size
+  };
+}
+
+async function hoseRenderAreaMap() {
+  if (!hoseAreaMap || !hoseAreaMarkers) return;
+
+  hoseAreaMarkers.clearLayers();
+  hoseAreaMovement.clearLayers();
+
+  const propertyId = hoseAreaPropertyId();
+
+  // IMPORTANT: no selected property never destroys the map.
+  // It simply shows an empty satellite map.
+  if (!propertyId) {
+    hoseSetAreaMetrics([], [], []);
+    if (hoseHas("cameraActivityCards")) {
+      $("cameraActivityCards").innerHTML =
+        '<div class="muted">Choose a property to show its cameras and stands.</div>';
+    }
+    return;
+  }
+
+  const cameraRows = hoseAreaCameraRows(propertyId);
+  const standRows = hoseAreaStandRows(propertyId);
+  const propertySightings = hoseAreaSightings.filter(s => s.property_id === propertyId);
+  const bounds = [];
+
+  cameraRows.forEach(camera => {
+    const lat = Number(camera.lat);
+    const lon = Number(camera.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+    const stats = hoseCameraStats(camera.id);
+
+    const marker = L.marker([lat, lon], {
+      icon: hoseCameraIcon(),
+      draggable: true,
+      title: camera.name
+    }).addTo(hoseAreaMarkers);
+
+    marker.bindPopup(`
+      <b>📷 ${camera.name}</b><br>
+      ${camera.primary_habitat || "Habitat not set"}
+      ${camera.facing ? ` · Facing ${camera.facing}` : ""}
+      <br><br>
+      ${stats.records} sighting records<br>
+      🦌 ${stats.deer} deer · ♂ ${stats.bucks} bucks · ♀ ${stats.does} does<br>
+      ${stats.known} identified deer
+    `);
+
+    marker.on("dragend", async event => {
+      const point = event.target.getLatLng();
+      await hoseSaveCameraLocation(camera.id, point.lat, point.lng);
+    });
+
+    bounds.push([lat, lon]);
+  });
+
+  standRows.forEach(stand => {
+    const lat = Number(stand.lat);
+    const lon = Number(stand.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+    const marker = L.marker([lat, lon], {
+      icon: hoseStandIcon(),
+      draggable: true,
+      title: stand.name
+    }).addTo(hoseAreaMarkers);
+
+    marker.bindPopup(`
+      <b>🌲 ${stand.name}</b><br>
+      ${stand.primary_habitat || "Habitat not set"}
+      ${stand.notes ? `<br>${stand.notes}` : ""}
+    `);
+
+    marker.on("dragend", async event => {
+      const point = event.target.getLatLng();
+      await hoseSaveStandLocation(stand.id, point.lat, point.lng);
+    });
+
+    bounds.push([lat, lon]);
+  });
+
+  if (bounds.length) {
+    hoseAreaMap.fitBounds(bounds, { padding: [45, 45], maxZoom: 17 });
+  }
+
+  hoseSetAreaMetrics(cameraRows, standRows, propertySightings);
+  hoseRenderCameraActivity(cameraRows);
+  hoseRenderMovement();
+  setTimeout(() => hoseAreaMap.invalidateSize(), 50);
+}
+
+function hoseSetAreaMetrics(cameraRows, standRows, propertySightings) {
+  if (hoseHas("areaCameraCount")) {
+    $("areaCameraCount").textContent =
+      cameraRows.filter(c => Number.isFinite(Number(c.lat)) && Number.isFinite(Number(c.lon))).length;
+  }
+  if (hoseHas("areaStandCount")) {
+    $("areaStandCount").textContent =
+      standRows.filter(s => Number.isFinite(Number(s.lat)) && Number.isFinite(Number(s.lon))).length;
+  }
+  if (hoseHas("areaSightingCount")) {
+    $("areaSightingCount").textContent = propertySightings.length;
+  }
+  if (hoseHas("areaBuckCount")) {
+    $("areaBuckCount").textContent =
+      propertySightings.reduce((n, s) => n + Number(s.buck_count || 0), 0);
+  }
+}
+
+function hoseRenderCameraActivity(cameraRows) {
+  if (!hoseHas("cameraActivityCards")) return;
+
+  $("cameraActivityCards").innerHTML =
+    cameraRows.map(camera => {
+      const stats = hoseCameraStats(camera.id);
+      const mapped =
+        Number.isFinite(Number(camera.lat)) &&
+        Number.isFinite(Number(camera.lon));
+
+      return `
+        <div class="stack-item">
+          <strong>📷 ${camera.name}</strong>
+          <div class="small muted">
+            ${camera.primary_habitat || "Habitat not set"} ·
+            ${mapped ? "Mapped" : "Not mapped yet"}
+          </div>
+          <div class="meta-row">
+            <span class="meta-chip">${stats.records} sightings</span>
+            <span class="meta-chip">${stats.deer} deer</span>
+            <span class="meta-chip">${stats.bucks} bucks</span>
+            <span class="meta-chip">${stats.known} identified deer</span>
+          </div>
+        </div>
+      `;
+    }).join("") ||
+    '<div class="muted">No cameras are saved for this property yet.</div>';
+}
+
+function hoseRenderMovement() {
+  if (!hoseAreaMovement || !hoseHas("mapDeer")) return;
+  hoseAreaMovement.clearLayers();
+
+  const deerId = $("mapDeer").value;
+  const propertyId = hoseAreaPropertyId();
+
+  if (!deerId) {
+    if (hoseHas("spatialTitle")) $("spatialTitle").textContent = "Property Pattern";
+    if (hoseHas("spatialSummary")) {
+      $("spatialSummary").innerHTML =
+        '<div class="muted">Choose an identified deer to visualize its mapped camera history.</div>';
+    }
+    return;
+  }
+
+  const deer = deerProfiles.find(d => d.id === deerId);
+
+  const rows = hoseAreaSightings
+    .filter(s => s.property_id === propertyId && s.deer_profile_id === deerId)
+    .sort((a, b) => new Date(a.captured_at || 0) - new Date(b.captured_at || 0));
+
+  const points = rows.map(s => {
+    const camera = cameras.find(c => c.id === s.camera_id);
+    if (!camera) return null;
+    const lat = Number(camera.lat);
+    const lon = Number(camera.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    return { lat, lon, camera, sighting: s };
+  }).filter(Boolean);
+
+  if (hoseHas("spatialTitle")) {
+    $("spatialTitle").textContent =
+      `${deer?.nickname || deer?.deer_code || "Deer"} Spatial Pattern`;
+  }
+
+  if (!points.length) {
+    if (hoseHas("spatialSummary")) {
+      $("spatialSummary").innerHTML =
+        '<div class="muted">This deer does not yet have sightings tied to mapped cameras.</div>';
+    }
+    return;
+  }
+
+  const line = points.map(p => [p.lat, p.lon]);
+
+  if (line.length >= 2) {
+    L.polyline(line, {
+      weight: 4,
+      opacity: 0.8,
+      dashArray: "7 7"
+    }).addTo(hoseAreaMovement);
+  }
+
+  points.forEach((point, index) => {
+    L.circleMarker([point.lat, point.lon], {
+      radius: 7,
+      weight: 2,
+      fillOpacity: 0.85
+    }).addTo(hoseAreaMovement)
+      .bindPopup(
+        `<b>${index + 1}. ${point.camera.name}</b><br>` +
+        (point.sighting.captured_at
+          ? new Date(point.sighting.captured_at).toLocaleString()
+          : "Time unavailable")
+      );
+  });
+
+  const counts = {};
+  points.forEach(p => counts[p.camera.name] = (counts[p.camera.name] || 0) + 1);
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+
+  if (hoseHas("spatialSummary")) {
+    $("spatialSummary").innerHTML = `
+      <div class="stack-item">
+        <strong>${points.length} mapped sightings</strong>
+        <div class="small muted">Across ${Object.keys(counts).length} camera locations.</div>
+      </div>
+      <div class="stack-item">
+        <strong>Most used mapped camera</strong>
+        <div>${top ? `${top[0]} · ${top[1]} sightings` : "Not enough data"}</div>
+      </div>
+    `;
+  }
+}
+
+function hoseBeginCameraPlacement() {
+  if (!hoseHas("mapCamera")) return;
+  const id = $("mapCamera").value;
+
+  if (!id) {
+    hoseAreaMessage("Choose a camera first.");
+    return;
+  }
+
+  const camera = cameras.find(c => c.id === id);
+  hoseAreaPlacement = { type: "camera", id };
+
+  if (hoseHas("areaMap")) $("areaMap").style.cursor = "crosshair";
+
+  hoseAreaMessage(
+    `📷 PLACING ${camera?.name || "CAMERA"} — click its exact location on the satellite image.`
+  );
+}
+
+function hoseBeginStandPlacement() {
+  if (!hoseHas("mapStand")) return;
+  const id = $("mapStand").value;
+
+  if (!id) {
+    hoseAreaMessage("Choose a stand first.");
+    return;
+  }
+
+  const stand = hoseAreaStands.find(s => s.id === id);
+  hoseAreaPlacement = { type: "stand", id };
+
+  if (hoseHas("areaMap")) $("areaMap").style.cursor = "crosshair";
+
+  hoseAreaMessage(
+    `🌲 PLACING ${stand?.name || "STAND"} — click its exact location on the satellite image.`
+  );
+}
+
+async function hoseHandleAreaClick(event) {
+  if (!hoseAreaPlacement) return;
+
+  const placement = hoseAreaPlacement;
+  hoseAreaPlacement = null;
+  if (hoseHas("areaMap")) $("areaMap").style.cursor = "";
+
+  hoseAreaMessage("Saving location…");
+
+  if (placement.type === "camera") {
+    await hoseSaveCameraLocation(
+      placement.id,
+      event.latlng.lat,
+      event.latlng.lng
+    );
+  } else {
+    await hoseSaveStandLocation(
+      placement.id,
+      event.latlng.lat,
+      event.latlng.lng
+    );
+  }
+}
+
+async function hoseSaveCameraLocation(cameraId, lat, lon) {
+  const { data, error } = await sb
+    .from("cameras")
+    .update({ lat, lon })
+    .eq("id", cameraId)
+    .eq("user_id", currentUser.id)
+    .select()
+    .single();
+
+  if (error) {
+    hoseAreaMessage("Could not save camera pin: " + error.message);
+    console.error("HOSE camera pin save:", error);
+    return;
+  }
+
+  // Update memory immediately, then reload from Supabase to prove persistence.
+  const index = cameras.findIndex(c => c.id === cameraId);
+  if (index >= 0) cameras[index] = { ...cameras[index], ...data };
+
+  await hoseReloadAreaData();
+  hoseAreaMessage(`📷 ${data.name || "Camera"} location saved to Supabase.`);
+  await hoseRenderAreaMap();
+  if (typeof renderCameras === "function") renderCameras();
+}
+
+async function hoseSaveStandLocation(standId, lat, lon) {
+  const { data, error } = await sb
+    .from("stands")
+    .update({ lat, lon })
+    .eq("id", standId)
+    .eq("user_id", currentUser.id)
+    .select()
+    .single();
+
+  if (error) {
+    hoseAreaMessage("Could not save stand pin: " + error.message);
+    console.error("HOSE stand pin save:", error);
+    return;
+  }
+
+  const index = hoseAreaStands.findIndex(s => s.id === standId);
+  if (index >= 0) hoseAreaStands[index] = { ...hoseAreaStands[index], ...data };
+
+  await hoseReloadAreaData();
+  hoseAreaMessage(`🌲 ${data.name || "Stand"} location saved to Supabase.`);
+  await hoseRenderAreaMap();
+}
+
+async function hoseAddStand() {
+  const propertyId = hoseAreaPropertyId();
+  const name = hoseHas("standName") ? $("standName").value.trim() : "";
+
+  if (!propertyId) {
+    hoseAreaMessage("Choose a property first.");
+    return;
+  }
+  if (!name) {
+    hoseAreaMessage("Enter a stand name first.");
+    return;
+  }
+
+  const { data, error } = await sb
+    .from("stands")
+    .insert({
+      user_id: currentUser.id,
+      property_id: propertyId,
+      name,
+      primary_habitat: hoseHas("standHabitat") ? $("standHabitat").value : null,
+      active: true
+    })
+    .select()
+    .single();
+
+  if (error) {
+    hoseAreaMessage("Could not create stand: " + error.message);
+    return;
+  }
+
+  if (hoseHas("standName")) $("standName").value = "";
+
+  await hoseReloadAreaData();
+  if (hoseHas("mapStand")) $("mapStand").value = data.id;
+  hoseAreaMessage(`${data.name} created. Click Place Stand, then click the satellite map.`);
+}
+
+function hoseAreaMessage(message) {
+  if (hoseHas("placementMessage")) {
+    $("placementMessage").textContent = message;
+  }
+}
+
+async function hoseOpenAreaIntelligence() {
+  hoseInitAreaMap();
+
+  // Refresh both general private data and map-specific data from Supabase.
+  // This is the persistence fix when moving from My Deer -> Area Intelligence.
+  await Promise.all([
+    loadProperties(),
+    loadDeerProfiles()
+  ]);
+
+  await hoseReloadAreaData();
+  hoseSyncAreaSelectors();
+  await hoseRenderAreaMap();
+
+  setTimeout(() => {
+    hoseAreaMap?.invalidateSize();
+  }, 150);
+}
+
+function hoseInstallAreaUi() {
+  if (!hoseHas("areaMap")) return;
+
+  // Wire controls only once.
+  if (hoseHas("mapProperty") && !$("mapProperty").dataset.hoseBound) {
+    $("mapProperty").dataset.hoseBound = "1";
+    $("mapProperty").addEventListener("change", async () => {
+      hoseAreaPlacement = null;
+      hoseSyncAreaSelectors();
+      await hoseRenderAreaMap();
+    });
+  }
+
+  if (hoseHas("mapDeer") && !$("mapDeer").dataset.hoseBound) {
+    $("mapDeer").dataset.hoseBound = "1";
+    $("mapDeer").addEventListener("change", hoseRenderMovement);
+  }
+
+  if (hoseHas("placeCameraBtn") && !$("placeCameraBtn").dataset.hoseBound) {
+    $("placeCameraBtn").dataset.hoseBound = "1";
+    $("placeCameraBtn").addEventListener("click", hoseBeginCameraPlacement);
+  }
+
+  if (hoseHas("placeStandBtn") && !$("placeStandBtn").dataset.hoseBound) {
+    $("placeStandBtn").dataset.hoseBound = "1";
+    $("placeStandBtn").addEventListener("click", hoseBeginStandPlacement);
+  }
+
+  if (hoseHas("addStandBtn") && !$("addStandBtn").dataset.hoseBound) {
+    $("addStandBtn").dataset.hoseBound = "1";
+    $("addStandBtn").addEventListener("click", hoseAddStand);
+  }
+
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape" && hoseAreaPlacement) {
+      hoseAreaPlacement = null;
+      if (hoseHas("areaMap")) $("areaMap").style.cursor = "";
+      hoseAreaMessage("Pin placement cancelled.");
+    }
+  });
+
+  // Open Area Intelligence from the three-tab layout.
+  document.querySelectorAll('.app-tab[data-tab="area-intel"]').forEach(button => {
+    if (button.dataset.hoseAreaBound) return;
+    button.dataset.hoseAreaBound = "1";
+    button.addEventListener("click", () => {
+      setTimeout(hoseOpenAreaIntelligence, 0);
+    });
+  });
+}
+
+// Install after the existing app initializes.
+document.addEventListener("DOMContentLoaded", () => {
+  setTimeout(hoseInstallAreaUi, 250);
+});
