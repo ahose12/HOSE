@@ -1841,6 +1841,63 @@ function renderDeerProfiles() {
                 : ""
             }
 
+            ${
+              deer.identity_fingerprint?.evidence_photo_count
+                ? `
+                  <div class="identity-fingerprint-summary">
+                    <strong>Identity fingerprint</strong>
+                    <div class="small muted">
+                      ${deer.identity_fingerprint.evidence_photo_count} confirmed evidence photo${deer.identity_fingerprint.evidence_photo_count === 1 ? "" : "s"}
+                      ·
+                      ${(deer.identity_fingerprint.all_view_angles || []).length} useful angle${(deer.identity_fingerprint.all_view_angles || []).length === 1 ? "" : "s"}
+                    </div>
+                    ${
+                      (deer.identity_fingerprint.all_view_angles || []).length
+                        ? `<div class="meta-row">${deer.identity_fingerprint.all_view_angles.map(angle => `<span class="meta-chip">${escapeHtml(angle.replaceAll("_", " "))}</span>`).join("")}</div>`
+                        : ""
+                    }
+                  </div>
+                `
+                : ""
+            }
+
+            ${
+              deer.ai_score_estimate != null
+                ? `
+                  <div class="profile-score-box">
+                    <div class="small muted">HOSE multi-photo gross score estimate</div>
+                    <strong>~${Number(deer.ai_score_estimate).toFixed(1)}"</strong>
+                    ${
+                      deer.ai_score_range_low != null &&
+                      deer.ai_score_range_high != null
+                        ? `<span>${Number(deer.ai_score_range_low).toFixed(0)}–${Number(deer.ai_score_range_high).toFixed(0)}" range</span>`
+                        : ""
+                    }
+                    ${
+                      deer.ai_score_confidence != null
+                        ? `<span class="small muted">${Math.round(Number(deer.ai_score_confidence) * 100)}% score confidence</span>`
+                        : ""
+                    }
+                    ${
+                      deer.identity_fingerprint?.latest_season &&
+                      deer.identity_fingerprint?.seasons?.[deer.identity_fingerprint.latest_season]?.score?.angle_family_count
+                        ? `<div class="small muted">${deer.identity_fingerprint.seasons[deer.identity_fingerprint.latest_season].score.angle_family_count} complementary angle group(s) contributing to confidence.</div>`
+                        : ""
+                    }
+                    <div class="small muted">Photo estimate only — not an official B&C measurement.</div>
+                  </div>
+                `
+                : ""
+            }
+
+            <button
+              type="button"
+              class="secondary mini"
+              onclick="openIdentityEvidence('${deer.id}')"
+            >
+              View Identity Evidence
+            </button>
+
           </div>
         `;
       }
@@ -2481,6 +2538,270 @@ function showDeerMatchConfirmation(aiResult) {
         };
     }
   );
+}
+
+
+function ensureIdentityEvidenceUi() {
+  if ($("identityEvidenceModal")) {
+    return;
+  }
+
+  const modal =
+    document.createElement("div");
+
+  modal.id =
+    "identityEvidenceModal";
+
+  modal.className =
+    "hose-modal hidden";
+
+  modal.innerHTML = `
+    <div class="hose-modal-backdrop"></div>
+
+    <article class="hose-modal-card identity-evidence-modal-card">
+      <div class="card-heading">
+        <div>
+          <div class="eyebrow">Multi-angle Identity</div>
+          <h3 id="identityEvidenceTitle">Identity Evidence</h3>
+        </div>
+
+        <button
+          id="closeIdentityEvidenceBtn"
+          type="button"
+          class="secondary mini"
+        >
+          Close
+        </button>
+      </div>
+
+      <div
+        id="identityEvidenceSummary"
+        class="identity-evidence-summary"
+      ></div>
+
+      <div
+        id="identityEvidenceGrid"
+        class="identity-evidence-grid"
+      ></div>
+
+      <div
+        id="identityEvidenceMessage"
+        class="small muted"
+      ></div>
+    </article>
+  `;
+
+  document.body.appendChild(
+    modal
+  );
+
+  $("closeIdentityEvidenceBtn")
+    .addEventListener(
+      "click",
+      () =>
+        modal.classList.add("hidden")
+    );
+
+  modal
+    .querySelector(".hose-modal-backdrop")
+    .addEventListener(
+      "click",
+      () =>
+        modal.classList.add("hidden")
+    );
+}
+
+
+async function openIdentityEvidence(deerId) {
+  ensureIdentityEvidenceUi();
+
+  const deer =
+    deerProfiles.find(
+      row =>
+        row.id === deerId
+    );
+
+  if (!deer) {
+    return;
+  }
+
+  $("identityEvidenceTitle").textContent =
+    `${deer.nickname || deer.deer_code || "Deer"} — Identity Evidence`;
+
+  $("identityEvidenceGrid").innerHTML =
+    "";
+
+  $("identityEvidenceMessage").textContent =
+    "Loading confirmed evidence photos…";
+
+  $("identityEvidenceModal")
+    .classList
+    .remove("hidden");
+
+  const {
+    data: rows,
+    error
+  } =
+    await sb
+      .from("deer_identity_evidence")
+      .select("*")
+      .eq("user_id", currentUser.id)
+      .eq("deer_profile_id", deerId)
+      .order("captured_at", {
+        ascending: false,
+        nullsFirst: false
+      })
+      .limit(30);
+
+  if (error) {
+    $("identityEvidenceMessage").textContent =
+      error.message;
+    return;
+  }
+
+  const evidence =
+    rows || [];
+
+  const fingerprint =
+    deer.identity_fingerprint
+    || {};
+
+  $("identityEvidenceSummary").innerHTML = `
+    <div class="metric">
+      <b>${evidence.length}</b>
+      <span>confirmed views</span>
+    </div>
+
+    <div class="metric">
+      <b>${(fingerprint.all_view_angles || []).length}</b>
+      <span>angles represented</span>
+    </div>
+
+    <div class="metric">
+      <b>${deer.ai_score_estimate != null ? `${Number(deer.ai_score_estimate).toFixed(1)}"` : "—"}</b>
+      <span>multi-photo score estimate</span>
+    </div>
+  `;
+
+  const cards =
+    [];
+
+  for (
+    const row
+    of evidence
+  ) {
+    const {
+      data: photo
+    } =
+      await sb
+        .from("trail_photos")
+        .select("storage_path")
+        .eq("id", row.photo_id)
+        .eq("user_id", currentUser.id)
+        .maybeSingle();
+
+    let signedUrl =
+      null;
+
+    if (photo?.storage_path) {
+      const {
+        data: signed
+      } =
+        await sb.storage
+          .from("trail-camera-photos")
+          .createSignedUrl(
+            photo.storage_path,
+            3600
+          );
+
+      signedUrl =
+        signed?.signedUrl
+        || null;
+    }
+
+    cards.push(`
+      <div class="identity-evidence-card">
+        ${
+          signedUrl
+            ? `<img src="${signedUrl}" alt="">`
+            : `<div class="deer-profile-image deer-profile-image-empty">🦌</div>`
+        }
+
+        <strong>${escapeHtml((row.view_angle || "unknown").replaceAll("_", " "))}</strong>
+
+        <div class="small muted">
+          ${row.captured_at ? new Date(row.captured_at).toLocaleString() : "Unknown capture time"}
+        </div>
+
+        ${
+          row.score_estimable &&
+          row.gross_score_inches != null
+            ? `
+              <div class="evidence-score">
+                ~${Number(row.gross_score_inches).toFixed(1)}"
+                ${
+                  row.score_range_low_inches != null &&
+                  row.score_range_high_inches != null
+                    ? ` (${Number(row.score_range_low_inches).toFixed(0)}–${Number(row.score_range_high_inches).toFixed(0)}")`
+                    : ""
+                }
+              </div>
+            `
+            : `<div class="small muted">Rack not scoreable from this view</div>`
+        }
+
+        <div class="small">
+          ${escapeHtml((row.antler_traits || []).slice(0, 4).join(" · "))}
+        </div>
+
+        <button
+          type="button"
+          class="secondary mini"
+          onclick="setProfileReferencePhoto('${deerId}', '${row.photo_id}')"
+        >
+          Use as Profile Photo
+        </button>
+      </div>
+    `);
+  }
+
+  $("identityEvidenceGrid").innerHTML =
+    cards.join("")
+    ||
+    '<div class="muted">No confirmed identity evidence yet.</div>';
+
+  $("identityEvidenceMessage").textContent =
+    "HOSE keeps traits, score samples and sighting metadata from every confirmed view. Redundant raw photos may be removed after 48 hours, while the best useful angle photos and protected images stay.";
+}
+
+
+async function setProfileReferencePhoto(
+  deerId,
+  photoId
+) {
+  const {
+    error
+  } =
+    await sb
+      .from("deer_profiles")
+      .update({
+        representative_photo_id:
+          photoId
+      })
+      .eq("id", deerId)
+      .eq("user_id", currentUser.id);
+
+  if (error) {
+    $("identityEvidenceMessage").textContent =
+      error.message;
+    return;
+  }
+
+  await loadDeerProfiles();
+  renderDeerProfiles();
+
+  $("identityEvidenceMessage").textContent =
+    "Profile photo updated.";
 }
 
 
@@ -4983,6 +5304,12 @@ window.openDeerProfileEditor =
 
 window.toggleTargetTag =
   toggleTargetTag;
+
+window.openIdentityEvidence =
+  openIdentityEvidence;
+
+window.setProfileReferencePhoto =
+  setProfileReferencePhoto;
 
 
 window.addEventListener(
