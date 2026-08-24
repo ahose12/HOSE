@@ -1,6 +1,66 @@
 const $ = id => document.getElementById(id);
 const rad = d => d * Math.PI / 180;
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+
+function parseTags(value) {
+  if (Array.isArray(value)) {
+    return [...new Set(
+      value
+        .map(tag => String(tag).trim())
+        .filter(Boolean)
+    )];
+  }
+
+  return [...new Set(
+    String(value || "")
+      .split(",")
+      .map(tag => tag.trim())
+      .filter(Boolean)
+  )];
+}
+
+
+function hasProfileTag(deer, tag) {
+  return parseTags(deer?.profile_tags)
+    .some(
+      existing =>
+        existing.toLowerCase() ===
+        String(tag).toLowerCase()
+    );
+}
+
+
+function toLocalDateTimeInput(value) {
+  const date =
+    value
+      ? new Date(value)
+      : new Date();
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const shifted =
+    new Date(
+      date.getTime() -
+      date.getTimezoneOffset() * 60000
+    );
+
+  return shifted
+    .toISOString()
+    .slice(0, 16);
+}
+
+
 let cfg = {};
 let publicLands = [];
 let observations = [];
@@ -24,6 +84,9 @@ let areaMap = null;
 let areaLayer = null;
 let movementLayer = null;
 let placementMode = null;
+
+let pendingPhotoMetadata = new Map();
+let targetForecastCache = new Map();
 
 
 /* ============================================================
@@ -432,6 +495,9 @@ function setupTabs() {
 
         syncAreaSelectors();
         renderAreaMap();
+
+        ensureTargetHuntPlanUi();
+        renderTargetBuckSelector();
 
         setTimeout(() => areaMap?.invalidateSize(), 150);
       }
@@ -848,6 +914,7 @@ function renderSelectedPreviews(files) {
     $("photoPreviewGrid");
 
   grid.innerHTML = "";
+  pendingPhotoMetadata.clear();
 
   if (!files.length) {
     section.classList.add("hidden");
@@ -858,15 +925,39 @@ function renderSelectedPreviews(files) {
 
   Array.from(files)
     .slice(0, 100)
-    .forEach(file => {
+    .forEach((file, index) => {
       const url =
         URL.createObjectURL(file);
+
+      const captureValue =
+        file.lastModified
+          ? toLocalDateTimeInput(
+              new Date(file.lastModified)
+            )
+          : "";
+
+      pendingPhotoMetadata.set(
+        index,
+        {
+          captured_at:
+            captureValue,
+
+          human_characteristics:
+            "",
+
+          human_notes:
+            "",
+
+          photo_tags:
+            []
+        }
+      );
 
       const card =
         document.createElement("div");
 
       card.className =
-        "photo-item";
+        "photo-item metadata-photo-card";
 
       card.innerHTML = `
         <img
@@ -875,12 +966,105 @@ function renderSelectedPreviews(files) {
         >
 
         <div class="photo-name">
-          ${file.name}
+          ${escapeHtml(file.name)}
         </div>
+
+        <div class="pre-ai-badge">
+          Review before AI
+        </div>
+
+        <label class="metadata-field">
+          Capture date / time
+          <input
+            id="metaCapturedAt-${index}"
+            type="datetime-local"
+            value="${captureValue}"
+          >
+        </label>
+
+        <label class="metadata-field">
+          Buck / deer characteristics you noticed
+          <textarea
+            id="metaCharacteristics-${index}"
+            rows="3"
+            placeholder="Example: split right G2, curled left brow, scar on shoulder..."
+          ></textarea>
+        </label>
+
+        <label class="metadata-field">
+          Hunter notes
+          <textarea
+            id="metaNotes-${index}"
+            rows="2"
+            placeholder="Anything you want HOSE to know before AI analyzes this image..."
+          ></textarea>
+        </label>
+
+        <label class="metadata-field">
+          Photo tags
+          <input
+            id="metaTags-${index}"
+            placeholder="scrape, daylight, field edge"
+          >
+        </label>
       `;
 
       grid.appendChild(card);
     });
+
+  if ($("processUploadBtn")) {
+    $("processUploadBtn").textContent =
+      "Upload & Analyze Reviewed Photos";
+  }
+}
+
+
+function getPendingPhotoMetadata(index, file) {
+  const capturedInput =
+    $(`metaCapturedAt-${index}`);
+
+  const characteristicsInput =
+    $(`metaCharacteristics-${index}`);
+
+  const notesInput =
+    $(`metaNotes-${index}`);
+
+  const tagsInput =
+    $(`metaTags-${index}`);
+
+  const capturedValue =
+    capturedInput?.value
+    ||
+    (
+      file.lastModified
+        ? toLocalDateTimeInput(
+            new Date(file.lastModified)
+          )
+        : ""
+    );
+
+  return {
+    captured_at:
+      capturedValue
+        ? new Date(capturedValue).toISOString()
+        : null,
+
+    human_characteristics:
+      characteristicsInput?.value?.trim()
+      || null,
+
+    human_notes:
+      notesInput?.value?.trim()
+      || null,
+
+    photo_tags:
+      parseTags(
+        tagsInput?.value
+      ),
+
+    metadata_reviewed:
+      true
+  };
 }
 
 
@@ -927,6 +1111,12 @@ async function uploadPhotos() {
 
       const fileId =
         crypto.randomUUID();
+
+      const metadata =
+        getPendingPhotoMetadata(
+          i,
+          file
+        );
 
       const path =
         `${currentUser.id}/${propertyId}/${cameraId}/${fileId}-${safeFileName(file.name)}`;
@@ -983,11 +1173,19 @@ async function uploadPhotos() {
               file.name,
 
             captured_at:
-              file.lastModified
-                ? new Date(
-                    file.lastModified
-                  ).toISOString()
-                : null,
+              metadata.captured_at,
+
+            human_characteristics:
+              metadata.human_characteristics,
+
+            human_notes:
+              metadata.human_notes,
+
+            photo_tags:
+              metadata.photo_tags,
+
+            metadata_reviewed:
+              metadata.metadata_reviewed,
 
             processing_status:
               "queued"
@@ -1337,76 +1535,532 @@ function renderDeerProfiles() {
   if (!deerProfiles.length) {
     $("deerCards").innerHTML =
       '<div class="muted">No AI-created deer profiles yet.</div>';
+
+    renderTargetBuckSelector();
     return;
   }
 
   $("deerCards").innerHTML =
     deerProfiles.map(
-      deer => `
-        <div class="stack-item">
+      deer => {
+        const tags =
+          parseTags(
+            deer.profile_tags
+          );
 
-          <div class="stack-item-head">
+        const target =
+          hasProfileTag(
+            deer,
+            "Target"
+          );
 
-            <div>
+        const tagHtml =
+          tags.length
+            ? tags
+                .map(
+                  tag =>
+                    `<span class="meta-chip deer-tag ${tag.toLowerCase() === "target" ? "target-tag" : ""}">${escapeHtml(tag)}</span>`
+                )
+                .join("")
+            : '<span class="small muted">No tags yet</span>';
 
-              <strong>
-                🦌
+        return `
+          <div class="stack-item deer-profile-card">
+
+            <div class="stack-item-head">
+
+              <div>
+
+                <strong>
+                  🦌
+                  ${
+                    escapeHtml(
+                      deer.nickname
+                      ||
+                      deer.deer_code
+                      ||
+                      "Unnamed deer"
+                    )
+                  }
+                </strong>
+
+                <div class="small muted">
+                  ${
+                    escapeHtml(
+                      deer.sex
+                      || "unknown"
+                    )
+                  }
+                  ·
+                  ${
+                    deer.sighting_count
+                    || 0
+                  }
+                  sightings
+                </div>
+
                 ${
-                  deer.nickname
-                  ||
-                  deer.deer_code
-                  ||
-                  "Unnamed deer"
+                  deer.estimated_age_class
+                    ? `<div class="small muted">Estimated age: ${escapeHtml(deer.estimated_age_class)}</div>`
+                    : ""
                 }
-              </strong>
 
-              <div class="small muted">
                 ${
-                  deer.sex
-                  || "unknown"
+                  deer.user_estimated_score != null
+                    ? `<div class="small muted">Hunter score estimate: ${escapeHtml(deer.user_estimated_score)}"</div>`
+                    : ""
                 }
-                ·
-                ${
-                  deer.sighting_count
-                  || 0
-                }
-                sightings
+
               </div>
 
-              ${
-                deer.estimated_age_class
-                  ? `<div class="small muted">Estimated age: ${deer.estimated_age_class}</div>`
-                  : ""
-              }
+              <div class="profile-actions">
+                <button
+                  class="secondary mini"
+                  type="button"
+                  onclick="toggleTargetTag('${deer.id}')"
+                >
+                  ${target ? "✓ Target" : "Mark Target"}
+                </button>
+
+                <button
+                  class="secondary mini"
+                  type="button"
+                  onclick="openDeerProfileEditor('${deer.id}')"
+                >
+                  Edit Profile
+                </button>
+              </div>
 
             </div>
 
-            <button
-              class="secondary mini"
-              type="button"
-              onclick="renameDeer('${deer.id}', ${JSON.stringify(deer.nickname || "")})"
-            >
-              Rename
-            </button>
+            <div class="meta-row deer-tag-row">
+              ${tagHtml}
+            </div>
+
+            ${
+              deer.antler_signature
+                ? `<p class="small"><strong>AI antlers:</strong> ${escapeHtml(deer.antler_signature)}</p>`
+                : ""
+            }
+
+            ${
+              deer.confirmed_characteristics
+                ? `<p class="small"><strong>Confirmed / hunter characteristics:</strong> ${escapeHtml(deer.confirmed_characteristics)}</p>`
+                : ""
+            }
+
+            ${
+              deer.phenotype_notes
+                ? `<p class="small"><strong>AI traits:</strong> ${escapeHtml(deer.phenotype_notes)}</p>`
+                : ""
+            }
+
+            ${
+              deer.hunter_notes
+                ? `<p class="small"><strong>Hunter notes:</strong> ${escapeHtml(deer.hunter_notes)}</p>`
+                : ""
+            }
 
           </div>
-
-          ${
-            deer.antler_signature
-              ? `<p class="small">Antlers: ${deer.antler_signature}</p>`
-              : ""
-          }
-
-          ${
-            deer.phenotype_notes
-              ? `<p class="small">Traits: ${deer.phenotype_notes}</p>`
-              : ""
-          }
-
-        </div>
-      `
+        `;
+      }
     )
     .join("");
+
+  renderTargetBuckSelector();
+}
+
+
+function ensureDeerProfileEditor() {
+  if ($("deerProfileEditor")) {
+    return;
+  }
+
+  const modal =
+    document.createElement("div");
+
+  modal.id =
+    "deerProfileEditor";
+
+  modal.className =
+    "hose-modal hidden";
+
+  modal.innerHTML = `
+    <div class="hose-modal-backdrop" data-close-profile-editor="1"></div>
+
+    <article class="hose-modal-card">
+      <div class="card-heading">
+        <div>
+          <div class="eyebrow">Hunter Review</div>
+          <h3>Edit Deer Profile</h3>
+        </div>
+
+        <button
+          id="closeDeerProfileEditorBtn"
+          type="button"
+          class="secondary mini"
+        >
+          Close
+        </button>
+      </div>
+
+      <input
+        id="editDeerId"
+        type="hidden"
+      >
+
+      <div class="form-grid">
+        <label>
+          Nickname
+          <input
+            id="editDeerNickname"
+            placeholder="Split G2"
+          >
+        </label>
+
+        <label>
+          Estimated age class
+          <select id="editDeerAge">
+            <option value="">Unknown / leave AI estimate</option>
+            <option value="1.5">1.5</option>
+            <option value="2.5">2.5</option>
+            <option value="3.5">3.5</option>
+            <option value="4.5">4.5</option>
+            <option value="5.5+">5.5+</option>
+          </select>
+        </label>
+      </div>
+
+      <label>
+        Hunter-estimated Boone & Crockett gross score
+        <input
+          id="editDeerScore"
+          type="number"
+          min="0"
+          step=".25"
+          placeholder="Example: 142.5"
+        >
+      </label>
+
+      <label>
+        Confirmed / hunter-observed characteristics
+        <textarea
+          id="editDeerCharacteristics"
+          rows="4"
+          placeholder="Split right G2; inside sticker; left brow curls inward; scar on left shoulder..."
+        ></textarea>
+      </label>
+
+      <label>
+        Hunter notes
+        <textarea
+          id="editDeerNotes"
+          rows="4"
+          placeholder="Season history, behavior, pass/shooter notes, etc."
+        ></textarea>
+      </label>
+
+      <label>
+        Tags — comma separated
+        <input
+          id="editDeerTags"
+          placeholder="Target, Shooter, Mature, Resident"
+        >
+      </label>
+
+      <div class="quick-tags">
+        <button type="button" class="secondary mini" data-quick-tag="Target">Target</button>
+        <button type="button" class="secondary mini" data-quick-tag="Shooter">Shooter</button>
+        <button type="button" class="secondary mini" data-quick-tag="Watch">Watch</button>
+        <button type="button" class="secondary mini" data-quick-tag="Pass">Pass</button>
+        <button type="button" class="secondary mini" data-quick-tag="Mature">Mature</button>
+        <button type="button" class="secondary mini" data-quick-tag="Resident">Resident</button>
+        <button type="button" class="secondary mini" data-quick-tag="Transient">Transient</button>
+        <button type="button" class="secondary mini" data-quick-tag="Harvested">Harvested</button>
+      </div>
+
+      <div class="profile-editor-note small muted">
+        AI traits remain visible separately. Your edits are stored as hunter-confirmed context rather than silently overwriting the AI record.
+      </div>
+
+      <div class="button-row">
+        <button
+          id="saveDeerProfileBtn"
+          type="button"
+          class="primary"
+        >
+          Save Profile
+        </button>
+      </div>
+
+      <div
+        id="deerProfileEditorMessage"
+        class="small muted"
+      ></div>
+    </article>
+  `;
+
+  document.body.appendChild(
+    modal
+  );
+
+  $("closeDeerProfileEditorBtn")
+    .addEventListener(
+      "click",
+      closeDeerProfileEditor
+    );
+
+  modal
+    .querySelectorAll(
+      '[data-close-profile-editor="1"]'
+    )
+    .forEach(
+      el =>
+        el.addEventListener(
+          "click",
+          closeDeerProfileEditor
+        )
+    );
+
+  modal
+    .querySelectorAll(
+      "[data-quick-tag]"
+    )
+    .forEach(
+      button =>
+        button.addEventListener(
+          "click",
+          () => {
+            const current =
+              parseTags(
+                $("editDeerTags").value
+              );
+
+            const tag =
+              button.dataset.quickTag;
+
+            if (
+              !current.some(
+                existing =>
+                  existing.toLowerCase() ===
+                  tag.toLowerCase()
+              )
+            ) {
+              current.push(tag);
+            }
+
+            $("editDeerTags").value =
+              current.join(", ");
+          }
+        )
+    );
+
+  $("saveDeerProfileBtn")
+    .addEventListener(
+      "click",
+      saveDeerProfileEdits
+    );
+}
+
+
+function openDeerProfileEditor(deerId) {
+  ensureDeerProfileEditor();
+
+  const deer =
+    deerProfiles.find(
+      row =>
+        row.id === deerId
+    );
+
+  if (!deer) {
+    return;
+  }
+
+  $("editDeerId").value =
+    deer.id;
+
+  $("editDeerNickname").value =
+    deer.nickname || "";
+
+  $("editDeerAge").value =
+    deer.estimated_age_class || "";
+
+  $("editDeerScore").value =
+    deer.user_estimated_score ?? "";
+
+  $("editDeerCharacteristics").value =
+    deer.confirmed_characteristics || "";
+
+  $("editDeerNotes").value =
+    deer.hunter_notes || "";
+
+  $("editDeerTags").value =
+    parseTags(
+      deer.profile_tags
+    ).join(", ");
+
+  $("deerProfileEditorMessage").textContent =
+    "";
+
+  $("deerProfileEditor")
+    .classList
+    .remove("hidden");
+}
+
+
+function closeDeerProfileEditor() {
+  $("deerProfileEditor")
+    ?.classList
+    .add("hidden");
+}
+
+
+async function saveDeerProfileEdits() {
+  const deerId =
+    $("editDeerId").value;
+
+  if (!deerId) {
+    return;
+  }
+
+  $("deerProfileEditorMessage").textContent =
+    "Saving…";
+
+  const scoreValue =
+    $("editDeerScore").value;
+
+  const updates = {
+    nickname:
+      $("editDeerNickname").value.trim()
+      || null,
+
+    estimated_age_class:
+      $("editDeerAge").value
+      || null,
+
+    user_estimated_score:
+      scoreValue
+        ? Number(scoreValue)
+        : null,
+
+    confirmed_characteristics:
+      $("editDeerCharacteristics").value.trim()
+      || null,
+
+    hunter_notes:
+      $("editDeerNotes").value.trim()
+      || null,
+
+    profile_tags:
+      parseTags(
+        $("editDeerTags").value
+      ),
+
+    last_hunter_reviewed_at:
+      new Date().toISOString()
+  };
+
+  const {
+    error
+  } =
+    await sb
+      .from("deer_profiles")
+      .update(updates)
+      .eq(
+        "id",
+        deerId
+      )
+      .eq(
+        "user_id",
+        currentUser.id
+      );
+
+  if (error) {
+    $("deerProfileEditorMessage").textContent =
+      error.message;
+
+    return;
+  }
+
+  await loadDeerProfiles();
+  renderDeerProfiles();
+
+  $("deerProfileEditorMessage").textContent =
+    "Profile saved.";
+
+  setTimeout(
+    closeDeerProfileEditor,
+    350
+  );
+}
+
+
+async function toggleTargetTag(deerId) {
+  const deer =
+    deerProfiles.find(
+      row =>
+        row.id === deerId
+    );
+
+  if (!deer) {
+    return;
+  }
+
+  let tags =
+    parseTags(
+      deer.profile_tags
+    );
+
+  const alreadyTarget =
+    tags.some(
+      tag =>
+        tag.toLowerCase() ===
+        "target"
+    );
+
+  if (alreadyTarget) {
+    tags =
+      tags.filter(
+        tag =>
+          tag.toLowerCase() !==
+          "target"
+      );
+  } else {
+    tags.push(
+      "Target"
+    );
+  }
+
+  const {
+    error
+  } =
+    await sb
+      .from("deer_profiles")
+      .update({
+        profile_tags:
+          tags,
+
+        last_hunter_reviewed_at:
+          new Date().toISOString()
+      })
+      .eq(
+        "id",
+        deerId
+      )
+      .eq(
+        "user_id",
+        currentUser.id
+      );
+
+  if (error) {
+    alert(
+      error.message
+    );
+    return;
+  }
+
+  await loadDeerProfiles();
+  renderDeerProfiles();
 }
 
 
@@ -1443,6 +2097,967 @@ async function reloadAreaIntelligenceData() {
 
   $("placementMessage").textContent =
     `${properties.length} propert${properties.length === 1 ? "y" : "ies"} loaded from Supabase. Choose a property to map cameras and stands.`;
+}
+
+
+
+
+/* ============================================================
+   TARGET HUNT PLAN
+   ============================================================ */
+
+function ensureTargetHuntPlanUi() {
+  if (
+    $("targetHuntPlanCard") ||
+    !$("areaMap")
+  ) {
+    return;
+  }
+
+  const card =
+    document.createElement("article");
+
+  card.id =
+    "targetHuntPlanCard";
+
+  card.className =
+    "intel-card target-hunt-card";
+
+  card.innerHTML = `
+    <div class="card-heading">
+      <div>
+        <div class="eyebrow">Target Intelligence</div>
+        <h3>Target Hunt Plan</h3>
+        <p class="small muted">
+          Rank mapped stands and upcoming daylight windows using this target buck's sightings, camera history, wind, and forecast weather.
+        </p>
+      </div>
+
+      <span class="target-pill">
+        Target
+      </span>
+    </div>
+
+    <div class="target-plan-controls">
+      <label>
+        Target buck
+        <select id="targetBuckSelect">
+          <option value="">Choose a Target-tagged buck…</option>
+        </select>
+      </label>
+
+      <button
+        id="buildTargetPlanBtn"
+        type="button"
+        class="primary map-action"
+      >
+        Build Hunt Plan
+      </button>
+    </div>
+
+    <div
+      id="targetPlanMessage"
+      class="small muted"
+    >
+      Tag a buck as Target in My Deer Profiles, map at least one stand, then build a plan.
+    </div>
+
+    <div
+      id="targetPlanResults"
+      class="target-plan-results"
+    ></div>
+  `;
+
+  $("areaMap")
+    .insertAdjacentElement(
+      "afterend",
+      card
+    );
+
+  $("buildTargetPlanBtn")
+    .addEventListener(
+      "click",
+      buildTargetHuntPlan
+    );
+}
+
+
+function renderTargetBuckSelector() {
+  if (!$("targetBuckSelect")) {
+    return;
+  }
+
+  const propertyId =
+    $("mapProperty")?.value
+    || "";
+
+  const targets =
+    deerProfiles
+      .filter(
+        deer =>
+          hasProfileTag(
+            deer,
+            "Target"
+          )
+      )
+      .filter(
+        deer =>
+          !propertyId ||
+          deer.property_id === propertyId
+      );
+
+  const previous =
+    $("targetBuckSelect").value;
+
+  $("targetBuckSelect").innerHTML =
+    '<option value="">Choose a Target-tagged buck…</option>'
+    +
+    targets
+      .map(
+        deer =>
+          `<option value="${deer.id}">${escapeHtml(deer.nickname || deer.deer_code || "Unnamed deer")}</option>`
+      )
+      .join("");
+
+  if (
+    targets.some(
+      deer =>
+        deer.id === previous
+    )
+  ) {
+    $("targetBuckSelect").value =
+      previous;
+  } else if (
+    targets.length === 1
+  ) {
+    $("targetBuckSelect").value =
+      targets[0].id;
+  }
+
+  if ($("targetPlanMessage")) {
+    if (!targets.length) {
+      $("targetPlanMessage").textContent =
+        "No Target-tagged bucks are saved for this property yet.";
+    } else {
+      $("targetPlanMessage").textContent =
+        `${targets.length} Target buck${targets.length === 1 ? "" : "s"} available for hunt planning.`;
+    }
+  }
+}
+
+
+function normalizeDegrees(value) {
+  return (
+    (
+      Number(value) % 360
+    ) + 360
+  ) % 360;
+}
+
+
+function angularDifference(a, b) {
+  const diff =
+    Math.abs(
+      normalizeDegrees(a) -
+      normalizeDegrees(b)
+    );
+
+  return Math.min(
+    diff,
+    360 - diff
+  );
+}
+
+
+function bearingDegrees(
+  fromLat,
+  fromLon,
+  toLat,
+  toLon
+) {
+  const phi1 =
+    rad(fromLat);
+
+  const phi2 =
+    rad(toLat);
+
+  const lambda =
+    rad(toLon - fromLon);
+
+  const y =
+    Math.sin(lambda)
+    *
+    Math.cos(phi2);
+
+  const x =
+    Math.cos(phi1)
+    *
+    Math.sin(phi2)
+    -
+    Math.sin(phi1)
+    *
+    Math.cos(phi2)
+    *
+    Math.cos(lambda);
+
+  return normalizeDegrees(
+    Math.atan2(
+      y,
+      x
+    )
+    *
+    180
+    /
+    Math.PI
+  );
+}
+
+
+function targetSightingsFor(deerId) {
+  return sightings
+    .filter(
+      row =>
+        row.deer_profile_id === deerId
+    )
+    .filter(
+      row =>
+        row.captured_at
+    )
+    .sort(
+      (a, b) =>
+        new Date(a.captured_at) -
+        new Date(b.captured_at)
+    );
+}
+
+
+function targetCameraHotspot(deerId) {
+  const rows =
+    targetSightingsFor(
+      deerId
+    );
+
+  const cameraCounts =
+    new Map();
+
+  rows.forEach(
+    sighting => {
+      if (!sighting.camera_id) {
+        return;
+      }
+
+      cameraCounts.set(
+        sighting.camera_id,
+        (
+          cameraCounts.get(
+            sighting.camera_id
+          )
+          || 0
+        ) + 1
+      );
+    }
+  );
+
+  const ranked =
+    [...cameraCounts.entries()]
+      .sort(
+        (a, b) =>
+          b[1] - a[1]
+      );
+
+  for (
+    const [
+      cameraId,
+      count
+    ]
+    of ranked
+  ) {
+    const camera =
+      cameras.find(
+        row =>
+          row.id === cameraId
+      );
+
+    if (
+      camera &&
+      Number.isFinite(
+        Number(camera.lat)
+      ) &&
+      Number.isFinite(
+        Number(camera.lon)
+      )
+    ) {
+      return {
+        camera,
+        count
+      };
+    }
+  }
+
+  return null;
+}
+
+
+function historicalHourScore(
+  targetRows,
+  hour
+) {
+  if (!targetRows.length) {
+    return 0.35;
+  }
+
+  const hours =
+    targetRows
+      .map(
+        row =>
+          new Date(
+            row.captured_at
+          ).getHours()
+      )
+      .filter(
+        value =>
+          Number.isFinite(value)
+      );
+
+  if (!hours.length) {
+    return 0.35;
+  }
+
+  let matches = 0;
+
+  hours.forEach(
+    seenHour => {
+      const diff =
+        Math.min(
+          Math.abs(
+            seenHour - hour
+          ),
+          24 -
+          Math.abs(
+            seenHour - hour
+          )
+        );
+
+      if (diff === 0) {
+        matches += 1;
+      } else if (diff === 1) {
+        matches += .7;
+      } else if (diff === 2) {
+        matches += .35;
+      }
+    }
+  );
+
+  return Math.min(
+    1,
+    matches /
+    Math.max(
+      1,
+      hours.length * .6
+    )
+  );
+}
+
+
+async function getTargetForecast(
+  lat,
+  lon
+) {
+  const cacheKey =
+    `${Number(lat).toFixed(3)},${Number(lon).toFixed(3)}`;
+
+  const cached =
+    targetForecastCache.get(
+      cacheKey
+    );
+
+  if (
+    cached &&
+    Date.now() -
+      cached.loadedAt
+      <
+      30 * 60 * 1000
+  ) {
+    return cached.data;
+  }
+
+  const url =
+    "https://api.open-meteo.com/v1/forecast"
+    +
+    `?latitude=${encodeURIComponent(lat)}`
+    +
+    `&longitude=${encodeURIComponent(lon)}`
+    +
+    "&hourly=temperature_2m,precipitation_probability,wind_speed_10m,wind_direction_10m,weather_code"
+    +
+    "&daily=sunrise,sunset"
+    +
+    "&temperature_unit=fahrenheit"
+    +
+    "&wind_speed_unit=mph"
+    +
+    "&timezone=auto"
+    +
+    "&forecast_days=7";
+
+  const response =
+    await fetch(url);
+
+  if (!response.ok) {
+    throw new Error(
+      "Weather forecast is temporarily unavailable."
+    );
+  }
+
+  const data =
+    await response.json();
+
+  targetForecastCache.set(
+    cacheKey,
+    {
+      loadedAt:
+        Date.now(),
+
+      data
+    }
+  );
+
+  return data;
+}
+
+
+function daylightWindowFor(
+  forecast,
+  timestamp
+) {
+  const dateKey =
+    String(timestamp)
+      .slice(0, 10);
+
+  const dailyDates =
+    forecast.daily?.time
+    || [];
+
+  const index =
+    dailyDates.indexOf(
+      dateKey
+    );
+
+  if (index < 0) {
+    return true;
+  }
+
+  const sunrise =
+    new Date(
+      forecast.daily.sunrise[index]
+    );
+
+  const sunset =
+    new Date(
+      forecast.daily.sunset[index]
+    );
+
+  const time =
+    new Date(timestamp);
+
+  return (
+    time >= sunrise &&
+    time <= sunset
+  );
+}
+
+
+function weatherCodeLabel(code) {
+  const value =
+    Number(code);
+
+  if (value === 0) return "clear";
+  if ([1,2,3].includes(value)) return "partly cloudy";
+  if ([45,48].includes(value)) return "fog";
+  if ([51,53,55,56,57].includes(value)) return "drizzle";
+  if ([61,63,65,66,67,80,81,82].includes(value)) return "rain";
+  if ([71,73,75,77,85,86].includes(value)) return "snow";
+  if ([95,96,99].includes(value)) return "thunderstorms";
+  return "mixed conditions";
+}
+
+
+function scoreStandForecastWindow({
+  stand,
+  hotspot,
+  targetRows,
+  forecastTime,
+  temperature,
+  precipitation,
+  windSpeed,
+  windDirection
+}) {
+  const hotspotLat =
+    Number(hotspot.camera.lat);
+
+  const hotspotLon =
+    Number(hotspot.camera.lon);
+
+  const standLat =
+    Number(stand.lat);
+
+  const standLon =
+    Number(stand.lon);
+
+  const distance =
+    miles(
+      standLat,
+      standLon,
+      hotspotLat,
+      hotspotLon
+    );
+
+  const distanceScore =
+    Math.max(
+      0,
+      30 -
+      distance * 30
+    );
+
+  const hour =
+    new Date(
+      forecastTime
+    ).getHours();
+
+  const activityScore =
+    historicalHourScore(
+      targetRows,
+      hour
+    )
+    * 25;
+
+  /*
+   * Forecast wind direction is the direction wind COMES FROM.
+   * Human scent generally travels toward +180° from that direction.
+   */
+  const scentDirection =
+    normalizeDegrees(
+      Number(windDirection)
+      +
+      180
+    );
+
+  const standToHotspot =
+    bearingDegrees(
+      standLat,
+      standLon,
+      hotspotLat,
+      hotspotLon
+    );
+
+  const scentAngle =
+    angularDifference(
+      scentDirection,
+      standToHotspot
+    );
+
+  let windScore = 0;
+
+  if (scentAngle >= 120) {
+    windScore = 30;
+  } else if (scentAngle >= 90) {
+    windScore = 24;
+  } else if (scentAngle >= 60) {
+    windScore = 15;
+  } else if (scentAngle >= 35) {
+    windScore = 7;
+  }
+
+  const precip =
+    Number(
+      precipitation
+      || 0
+    );
+
+  const weatherScore =
+    Math.max(
+      0,
+      10 -
+      precip * .1
+    );
+
+  const windSpeedNumber =
+    Number(
+      windSpeed
+      || 0
+    );
+
+  const windSpeedScore =
+    windSpeedNumber >= 3 &&
+    windSpeedNumber <= 15
+      ? 5
+      : windSpeedNumber < 25
+        ? 2
+        : 0;
+
+  const total =
+    Math.round(
+      Math.min(
+        100,
+        distanceScore
+        +
+        activityScore
+        +
+        windScore
+        +
+        weatherScore
+        +
+        windSpeedScore
+      )
+    );
+
+  return {
+    total,
+    distance,
+    distanceScore,
+    activityScore,
+    windScore,
+    weatherScore,
+    windSpeedScore,
+    scentAngle,
+    temperature:
+      Number(temperature),
+
+    precipitation:
+      precip,
+
+    windSpeed:
+      windSpeedNumber,
+
+    windDirection:
+      Number(windDirection)
+  };
+}
+
+
+async function buildTargetHuntPlan() {
+  ensureTargetHuntPlanUi();
+
+  const propertyId =
+    $("mapProperty")?.value
+    || "";
+
+  const deerId =
+    $("targetBuckSelect")?.value
+    || "";
+
+  const property =
+    properties.find(
+      row =>
+        row.id === propertyId
+    );
+
+  const deer =
+    deerProfiles.find(
+      row =>
+        row.id === deerId
+    );
+
+  if (!propertyId) {
+    $("targetPlanMessage").textContent =
+      "Choose a property first.";
+    return;
+  }
+
+  if (!deer) {
+    $("targetPlanMessage").textContent =
+      "Choose a Target-tagged buck first.";
+    return;
+  }
+
+  const propertyLat =
+    Number(property?.lat);
+
+  const propertyLon =
+    Number(property?.lon);
+
+  if (
+    !Number.isFinite(propertyLat) ||
+    !Number.isFinite(propertyLon)
+  ) {
+    $("targetPlanMessage").textContent =
+      "Set the property's map location before building a hunt plan.";
+    return;
+  }
+
+  const mappedStands =
+    stands.filter(
+      stand =>
+        stand.property_id === propertyId
+        &&
+        Number.isFinite(
+          Number(stand.lat)
+        )
+        &&
+        Number.isFinite(
+          Number(stand.lon)
+        )
+    );
+
+  if (!mappedStands.length) {
+    $("targetPlanMessage").textContent =
+      "Map at least one stand before building a Target Hunt Plan.";
+    return;
+  }
+
+  const targetRows =
+    targetSightingsFor(
+      deerId
+    );
+
+  const hotspot =
+    targetCameraHotspot(
+      deerId
+    );
+
+  if (!hotspot) {
+    $("targetPlanMessage").textContent =
+      "This target does not yet have sightings tied to a mapped camera. HOSE needs at least one mapped target sighting before ranking stands.";
+    return;
+  }
+
+  $("targetPlanMessage").textContent =
+    "Loading wind/weather and ranking hunt windows…";
+
+  $("targetPlanResults").innerHTML =
+    "";
+
+  try {
+    const forecast =
+      await getTargetForecast(
+        propertyLat,
+        propertyLon
+      );
+
+    const times =
+      forecast.hourly?.time
+      || [];
+
+    const temperatures =
+      forecast.hourly?.temperature_2m
+      || [];
+
+    const precipitation =
+      forecast.hourly?.precipitation_probability
+      || [];
+
+    const windSpeeds =
+      forecast.hourly?.wind_speed_10m
+      || [];
+
+    const windDirections =
+      forecast.hourly?.wind_direction_10m
+      || [];
+
+    const weatherCodes =
+      forecast.hourly?.weather_code
+      || [];
+
+    const now =
+      Date.now();
+
+    const candidates =
+      [];
+
+    times.forEach(
+      (time, index) => {
+        const timestamp =
+          new Date(time);
+
+        if (
+          timestamp.getTime() <= now
+          ||
+          timestamp.getTime() >
+            now +
+            7 * 24 * 60 * 60 * 1000
+        ) {
+          return;
+        }
+
+        if (
+          !daylightWindowFor(
+            forecast,
+            time
+          )
+        ) {
+          return;
+        }
+
+        mappedStands.forEach(
+          stand => {
+            const score =
+              scoreStandForecastWindow({
+                stand,
+                hotspot,
+                targetRows,
+                forecastTime:
+                  time,
+
+                temperature:
+                  temperatures[index],
+
+                precipitation:
+                  precipitation[index],
+
+                windSpeed:
+                  windSpeeds[index],
+
+                windDirection:
+                  windDirections[index]
+              });
+
+            candidates.push({
+              stand,
+              time,
+              weatherCode:
+                weatherCodes[index],
+              ...score
+            });
+          }
+        );
+      }
+    );
+
+    candidates.sort(
+      (a, b) =>
+        b.total - a.total
+    );
+
+    const selected =
+      [];
+
+    const usedWindows =
+      new Set();
+
+    for (
+      const candidate
+      of candidates
+    ) {
+      const date =
+        new Date(
+          candidate.time
+        );
+
+      const key =
+        `${candidate.stand.id}-${date.toISOString().slice(0, 13)}`;
+
+      if (
+        usedWindows.has(key)
+      ) {
+        continue;
+      }
+
+      selected.push(
+        candidate
+      );
+
+      usedWindows.add(
+        key
+      );
+
+      if (
+        selected.length >= 5
+      ) {
+        break;
+      }
+    }
+
+    if (!selected.length) {
+      $("targetPlanMessage").textContent =
+        "No upcoming daylight forecast windows were available.";
+      return;
+    }
+
+    const hotspotName =
+      hotspot.camera.name;
+
+    $("targetPlanMessage").textContent =
+      `Planning around ${deer.nickname || deer.deer_code || "Target buck"} using ${targetRows.length} target sighting${targetRows.length === 1 ? "" : "s"} and hotspot camera ${hotspotName}.`;
+
+    $("targetPlanResults").innerHTML =
+      selected.map(
+        (candidate, index) => {
+          const date =
+            new Date(
+              candidate.time
+            );
+
+          const windQuality =
+            candidate.windScore >= 24
+              ? "Strong wind setup"
+              : candidate.windScore >= 15
+                ? "Usable wind setup"
+                : "Wind needs caution";
+
+          const activityQuality =
+            candidate.activityScore >= 18
+              ? "Matches historical activity time"
+              : candidate.activityScore >= 10
+                ? "Some historical timing support"
+                : "Limited historical timing support";
+
+          return `
+            <div class="target-plan-option ${index === 0 ? "top-plan" : ""}">
+              <div class="target-plan-rank">
+                #${index + 1}
+              </div>
+
+              <div>
+                <strong>
+                  ${escapeHtml(candidate.stand.name)}
+                  ·
+                  ${date.toLocaleDateString([], {weekday:"short", month:"short", day:"numeric"})}
+                  ${date.toLocaleTimeString([], {hour:"numeric", minute:"2-digit"})}
+                </strong>
+
+                <div class="target-score">
+                  Hunt score: ${candidate.total}/100
+                </div>
+
+                <div class="small muted">
+                  ${windQuality} · ${activityQuality}
+                </div>
+
+                <div class="target-plan-metrics">
+                  <span>${candidate.distance.toFixed(2)} mi from ${escapeHtml(hotspotName)}</span>
+                  <span>${candidate.windSpeed.toFixed(0)} mph wind @ ${candidate.windDirection.toFixed(0)}°</span>
+                  <span>${candidate.temperature.toFixed(0)}°F</span>
+                  <span>${candidate.precipitation.toFixed(0)}% precip.</span>
+                  <span>${weatherCodeLabel(candidate.weatherCode)}</span>
+                </div>
+
+                <div class="small target-plan-why">
+                  HOSE ranks this window from mapped stand geometry, scent direction relative to the target's most-used mapped camera, historical sighting time, and forecast conditions.
+                </div>
+              </div>
+            </div>
+          `;
+        }
+      )
+      .join("")
+      +
+      `
+        <div class="small muted target-disclaimer">
+          Hunt score is a decision-support heuristic, not the probability of seeing or harvesting this deer. Forecast source: Open-Meteo. Always use current local conditions, safe access, property rules, and applicable hunting regulations.
+        </div>
+      `;
+
+  } catch (error) {
+    console.error(
+      "HOSE Target Hunt Plan error:",
+      error
+    );
+
+    $("targetPlanMessage").textContent =
+      error?.message
+      ||
+      "Could not build the Target Hunt Plan.";
+  }
 }
 
 
@@ -1611,12 +3226,8 @@ function syncAreaSelectors() {
   }
 
   /*
-   * IMPORTANT:
-   * Property selection only updates the selected property's controls.
-   * It does NOT move, recreate, hide, or re-zoom the map.
-   *
-   * This keeps the currently visible map intact when switching between
-   * saved properties.
+   * Selecting a saved property must never take ownership of map navigation.
+   * Selector syncing only updates controls and metadata.
    */
 }
 
@@ -1736,8 +3347,8 @@ function renderAreaMap() {
   });
 
   /*
-   * Marker rendering must not change the user's current map view.
-   * We intentionally do not call setView() or fitBounds() here.
+   * Redrawing property/camera/stand markers must not move the map.
+   * The hunter keeps control of the current center and zoom.
    */
 
   const propertySightings = sightings.filter(s => s.property_id === propertyId);
@@ -2852,17 +4463,10 @@ async function init() {
               );
             }
 
-            /*
-             * DO NOT reload/recreate the map or force a new map view here.
-             * The Area tab already loaded fresh Supabase data when it opened.
-             */
             syncAreaSelectors();
             renderAreaMap();
+            renderTargetBuckSelector();
 
-            /*
-             * Leaflet can need a size refresh after UI updates, but this
-             * does not move the current center or zoom.
-             */
             requestAnimationFrame(
               () => {
                 areaMap?.invalidateSize({
@@ -2953,6 +4557,12 @@ async function init() {
 
 window.renameDeer =
   renameDeer;
+
+window.openDeerProfileEditor =
+  openDeerProfileEditor;
+
+window.toggleTargetTag =
+  toggleTargetTag;
 
 
 window.addEventListener(
