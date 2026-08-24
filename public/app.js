@@ -539,6 +539,49 @@ function blockContainingText(
 }
 
 
+
+function removeFirstTabLowerSections() {
+  const myTab =
+    $("tab-my-intel");
+
+  if (!myTab) {
+    return;
+  }
+
+  /*
+   * AI Analysis was removed from the dedicated first-tab home.
+   * Hide any legacy AI Analysis block that may still exist in index.html.
+   */
+  const aiBlock =
+    blockContainingText(
+      myTab,
+      "AI Analysis"
+    );
+
+  if (aiBlock) {
+    aiBlock.classList.add(
+      "hose-role-hidden"
+    );
+  }
+
+  /*
+   * Hide only the legacy My Property Intelligence section on Tab 1.
+   * Do not move or remove Deer Profiles, stats, or Trail Cam Intelligence.
+   */
+  const propertyIntelBlock =
+    blockContainingText(
+      myTab,
+      "My Property Intelligence"
+    );
+
+  if (propertyIntelBlock) {
+    propertyIntelBlock.classList.add(
+      "hose-role-hidden"
+    );
+  }
+}
+
+
 function cleanupTabRoles() {
   const myTab =
     $("tab-my-intel");
@@ -609,6 +652,8 @@ function cleanupTabRoles() {
     .remove(
       "hose-role-hidden"
     );
+
+  removeFirstTabLowerSections();
 }
 
 
@@ -1043,32 +1088,6 @@ function ensureDeerIntelligenceHome() {
           class="first-tab-intel-grid"
         ></div>
       </section>
-
-      <section
-        id="aiAnalysisSection"
-        class="first-tab-intel-section"
-      >
-        <div class="section-heading-row">
-          <div>
-            <div class="eyebrow">
-              AI Analysis
-            </div>
-
-            <h2>
-              Recent Deer Analysis
-            </h2>
-
-            <p class="small muted">
-              Recent HOSE AI findings, identity context and scoring information from analyzed trail-camera photos.
-            </p>
-          </div>
-        </div>
-
-        <div
-          id="aiAnalysisCards"
-          class="ai-analysis-grid"
-        ></div>
-      </section>
     `;
 
     myTab.prepend(
@@ -1138,15 +1157,7 @@ function makeDeerProfilePrimary() {
 
 async function renderFirstTabIntelligence() {
   renderTrailCamIntelligence();
-
-  try {
-    await renderFirstTabAiAnalysis();
-  } catch (error) {
-    console.error(
-      "HOSE first-tab AI analysis render failed:",
-      error
-    );
-  }
+  removeFirstTabLowerSections();
 }
 
 

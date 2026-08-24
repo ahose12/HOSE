@@ -2529,3 +2529,10 @@ a{
     flex-direction: column;
   }
 }
+
+
+/* Tab 1 cleanup: keep everything above these sections intact. */
+#tab-my-intel #aiAnalysisSection {
+  display: none !important;
+}
+
