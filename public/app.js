@@ -88,6 +88,7 @@ async function applySession(session) {
     "hidden",
     !currentUser
   );
+  document.body.classList.toggle("is-authenticated", !!currentUser);
 
   if (!currentUser) {
     $("signedInEmail").textContent = "";
@@ -233,6 +234,7 @@ async function loadMyProfile() {
   }
   currentProfile = data || {};
   $("signedInUsername").textContent = currentProfile.username ? `@${currentProfile.username}` : "Username required";
+  if ($("signedInUsernameSide")) $("signedInUsernameSide").textContent = currentProfile.username ? `@${currentProfile.username}` : "@hunter";
   if ($("settingsUsername")) $("settingsUsername").value = currentProfile.username || "";
   if ($("settingsDisplayName")) $("settingsDisplayName").value = currentProfile.display_name || "";
   if ($("settingsEmail")) $("settingsEmail").value = currentUser.email || "";
@@ -1159,6 +1161,7 @@ async function renderProfileShowcase() {
     empty?.classList.remove("hidden");
     img?.classList.add("hidden");
     details?.classList.add("hidden");
+    $("profileLeftSummary")?.classList.add("hidden");
     counter?.classList.add("hidden");
     populateCompareSelectors();
     return;
@@ -1185,6 +1188,19 @@ async function renderProfileShowcase() {
   $("profileSightings").textContent = Number(deer.sighting_count || 0).toLocaleString();
   $("profileLastSeen").textContent = formatProfileDate(deer.last_seen);
   $("profileConfidence").textContent = percentValue(deer.identity_confidence);
+  if ($("profileNameLeft")) $("profileNameLeft").textContent = profileDisplayName(deer);
+  if ($("profileTagsLeft")) $("profileTagsLeft").textContent = tags.length ? tags.join(" · ") : "No tags yet";
+  if ($("profileScoreLeft")) $("profileScoreLeft").textContent = score === null ? "—" : `~${score.toFixed(1)}"`;
+  if ($("profileScoreRangeLeft")) $("profileScoreRangeLeft").textContent = range ? `Range: ${range}` : "Score estimate appears when available";
+  if ($("profileAgeLeft")) $("profileAgeLeft").textContent = deer.estimated_age_class ? `${deer.estimated_age_class} yr` : "—";
+  if ($("profileConfidenceLeft")) $("profileConfidenceLeft").textContent = percentValue(deer.identity_confidence);
+  $("profileLeftSummary")?.classList.remove("hidden");
+  const ring = $("profileConfidenceRing");
+  if (ring) {
+    const raw = Number(deer.identity_confidence);
+    const pct = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw <= 1 ? raw * 100 : raw)) : 0;
+    ring.style.setProperty("--confidence", `${pct * 3.6}deg`);
+  }
 
   img.classList.add("hidden");
   img.removeAttribute("src");
@@ -2031,3 +2047,46 @@ document.addEventListener(
 );
 
 window.sendFriendRequest=sendFriendRequest; window.respondFriend=respondFriend;
+
+
+/* DIE dashboard navigation helpers */
+document.addEventListener("click", (event) => {
+  const jump = event.target.closest("[data-tab-jump]");
+  if (jump) {
+    const target = jump.dataset.tabJump;
+    document.querySelector(`.app-tab[data-tab="${target}"]`)?.click();
+  }
+
+  const workspace = event.target.closest("[data-workspace]");
+  if (workspace) {
+    const drawer = document.getElementById("workspaceDrawer");
+    if (drawer) {
+      drawer.open = true;
+      setTimeout(() => drawer.scrollIntoView({behavior:"smooth", block:"start"}), 20);
+    }
+  }
+
+  if (event.target.closest("#addDataTopBtn")) {
+    const drawer = document.getElementById("workspaceDrawer");
+    if (drawer) { drawer.open = true; setTimeout(() => drawer.scrollIntoView({behavior:"smooth",block:"start"}),20); }
+  }
+
+  if (event.target.closest("#editCurrentProfileBtnLeft")) {
+    document.getElementById("editCurrentProfileBtn")?.click();
+  }
+
+  const tabWithScroll = event.target.closest(".app-tab[data-scroll]");
+  if (tabWithScroll) {
+    setTimeout(() => document.getElementById("accountSettingsCard")?.scrollIntoView({behavior:"smooth",block:"center"}), 40);
+  }
+
+  const sideAction = event.target.closest(".side-action");
+  if (sideAction?.dataset.action === "planner") {
+    document.querySelector('.app-tab[data-tab="area-intel"]')?.click();
+  }
+  if (sideAction?.dataset.action === "activity") {
+    document.querySelector('.app-tab[data-tab="my-intel"]')?.click();
+    const drawer = document.getElementById("workspaceDrawer");
+    if (drawer) { drawer.open = true; setTimeout(() => drawer.scrollIntoView({behavior:"smooth",block:"start"}),30); }
+  }
+});

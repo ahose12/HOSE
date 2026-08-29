@@ -100,60 +100,46 @@
   <!-- AUTHENTICATED APPLICATION -->
   <!-- ===================================================== -->
 
-  <main
-    id="appShell"
-    class="hidden"
-  >
+  <main id="appShell" class="hidden app-layout">
 
-    <div class="app-toolbar">
-
-      <div>
-
-        <span class="signed-in-label">
-          Signed in as
-        </span>
-
-        <strong id="signedInEmail"></strong><div id="signedInUsername" class="small muted"></div>
-
+    <aside class="app-sidebar">
+      <div class="sidebar-brand">
+        <img src="die-logo.png" alt="DIE logo">
+        <div class="sidebar-brand-name">DIE</div>
+        <div class="sidebar-brand-sub">Deer Intelligence Engine</div>
       </div>
 
-      <button
-        id="signOutBtn"
-        class="secondary"
-        type="button"
-      >
-        Sign Out
-      </button>
+      <nav class="sidebar-nav" aria-label="DIE navigation">
+        <button class="app-tab active" data-tab="my-intel" type="button"><span>⌖</span> My Deer Intelligence</button>
+        <button class="app-tab" data-tab="area-intel" type="button"><span>⌖</span> Area Intelligence</button>
+        <button class="side-action" data-action="planner" type="button"><span>◎</span> Hunt Planner</button>
+        <button class="app-tab" data-tab="area-intel" type="button"><span>♜</span> Public Land</button>
+        <div class="side-divider"></div>
+        <button class="app-tab" data-tab="area-intel" type="button"><span>◇</span> Map</button>
+        <button class="side-action" data-action="activity" type="button"><span>⌁</span> Activity</button>
+        <button class="app-tab" data-tab="friends" type="button"><span>♙</span> Friends</button>
+        <button class="app-tab" data-tab="friends" data-scroll="account" type="button"><span>♙</span> Account</button>
+        <button class="app-tab" data-tab="friends" data-scroll="account" type="button"><span>⚙</span> Settings</button>
+      </nav>
 
-    </div>
+      <div class="legacy-session-fields" aria-hidden="true"><span id="signedInEmail"></span><span id="signedInUsername"></span></div>
 
+      <div class="sidebar-user">
+        <div class="avatar-dot">D</div>
+        <div class="sidebar-user-copy">
+          <strong id="signedInUsernameSide">@hunter</strong>
+          <span>View Profile</span>
+        </div>
+      </div>
+      <button id="signOutBtn" class="sidebar-signout" type="button">↪ Sign Out</button>
+    </aside>
 
-    <!-- =================================================== -->
-    <!-- TABS -->
-    <!-- =================================================== -->
-
-    <nav class="app-tabs">
-
-      <button
-        class="app-tab active"
-        data-tab="my-intel"
-        type="button"
-      >
-        My Deer
-      </button>
-
-      <button class="app-tab" data-tab="friends" type="button">👥 Friends & Sharing</button>
-
-      <button
-        class="app-tab"
-        data-tab="area-intel"
-        type="button"
-      >
-        Area Intelligence
-      </button>
-
-    </nav>
-
+    <div class="app-main">
+      <div class="mobile-appbar">
+        <img src="die-logo.png" alt="DIE">
+        <strong>DIE</strong>
+        <button class="mobile-menu-button" type="button" aria-label="Menu">☰</button>
+      </div>
 
     <section id="tab-friends" class="tab-panel hidden">
       <div class="section-heading"><div><div class="eyebrow">Private Hunting Network</div><h2>Friends & Sharing</h2><p>Find DIE hunters by username and privately share selected properties and stands.</p></div></div>
@@ -163,7 +149,7 @@
       </div>
       <article class="card"><h3>My Friends</h3><div id="friendsList" class="stack muted">No friends yet.</div></article>
       <article class="card"><h3>Share Hunting Access</h3><p class="muted">Choose a friend and share only the property or stand you want them to see.</p><label>Friend<select id="shareFriend"></select></label><label>Property<select id="shareProperty"></select></label><label>Stand (optional)<select id="shareStand"><option value="">Entire property</option></select></label><button id="shareAccessBtn" class="primary" type="button">Share Access</button><div id="shareMessage" class="small muted"></div></article>
-      <article class="card"><h3>Account Settings</h3><label>Username<input id="settingsUsername" placeholder="username"></label><label>Display Name<input id="settingsDisplayName" placeholder="Display name"></label><label>Email<input id="settingsEmail" disabled></label><button id="saveProfileBtn" class="primary" type="button">Save Profile</button><div id="profileMessage" class="small muted"></div></article>
+      <article class="card" id="accountSettingsCard"><h3>Account Settings</h3><label>Username<input id="settingsUsername" placeholder="username"></label><label>Display Name<input id="settingsDisplayName" placeholder="Display name"></label><label>Email<input id="settingsEmail" disabled></label><button id="saveProfileBtn" class="primary" type="button">Save Profile</button><div id="profileMessage" class="small muted"></div></article>
     </section>
 
     <!-- =================================================== -->
@@ -171,6 +157,17 @@
     <!-- =================================================== -->
 
     <section id="tab-my-intel" class="tab-panel">
+
+      <div class="dashboard-topbar">
+        <div>
+          <h1>My Deer Intelligence</h1>
+          <p>Your deer. Your data. Smarter hunts.</p>
+        </div>
+        <div class="dashboard-top-actions">
+          <button class="icon-button" type="button" aria-label="Notifications">♧<span class="notification-dot"></span></button>
+          <button id="addDataTopBtn" class="outline-accent" type="button"><span>＋</span> Add Data</button>
+        </div>
+      </div>
 
       <section class="profile-browser">
         <div class="profile-browser-head">
@@ -207,37 +204,51 @@
             <button id="profileNextBtn" class="profile-arrow profile-arrow-right" type="button" aria-label="Next deer">›</button>
           </div>
 
+          <div id="profileLeftSummary" class="profile-left-summary hidden">
+            <div class="left-profile-title-row">
+              <div>
+                <h2 id="profileNameLeft">—</h2>
+                <div id="profileTagsLeft" class="muted">No tags yet</div>
+              </div>
+              <button id="editCurrentProfileBtnLeft" class="secondary mini" type="button">✎&nbsp; Edit Profile</button>
+            </div>
+            <div class="left-profile-stats">
+              <div><span>DIE Score</span><strong id="profileScoreLeft">—</strong><small id="profileScoreRangeLeft"></small></div>
+              <div><span>Estimated Age</span><strong id="profileAgeLeft">—</strong><small>AI estimate</small></div>
+              <div><span>Score Confidence</span><strong id="profileConfidenceLeft">—</strong><small>Profile confidence</small></div>
+            </div>
+          </div>
+
           <div id="profileDetails" class="profile-details hidden">
+            <div class="right-profile-kicker">Buck Profile</div>
             <div class="profile-title-row">
               <div>
                 <h3 id="profileName">—</h3>
-                <div id="profileTags" class="profile-tags muted">No tags yet</div>
+                <div id="profileTags" class="profile-tags">No tags yet</div>
               </div>
-              <button id="editCurrentProfileBtn" class="secondary mini" type="button">Edit Profile</button>
+              <button id="editCurrentProfileBtn" class="square-edit" type="button" aria-label="Edit profile">✎</button>
             </div>
 
-            <div class="profile-metrics">
-              <div class="profile-metric">
+            <div class="profile-score-zone">
+              <div class="profile-score-copy">
                 <span>DIE Score</span>
                 <strong id="profileScore">—</strong>
                 <small id="profileScoreRange"></small>
               </div>
-              <div class="profile-metric">
-                <span>Estimated Age</span>
-                <strong id="profileAge">—</strong>
-                <small>AI estimate</small>
-              </div>
-              <div class="profile-metric">
-                <span>Sightings</span>
-                <strong id="profileSightings">0</strong>
-                <small id="profileLastSeen">No sightings yet</small>
-              </div>
-              <div class="profile-metric">
-                <span>Identity Confidence</span>
-                <strong id="profileConfidence">—</strong>
-                <small>Profile match confidence</small>
-              </div>
+              <div class="confidence-ring" id="profileConfidenceRing"><strong id="profileConfidence">—</strong><span>Confidence</span></div>
             </div>
+
+            <div class="profile-mini-grid">
+              <div><b>▣</b><span>Est. Age</span><strong id="profileAge">—</strong></div>
+              <div><b>▧</b><span>Sightings</span><strong id="profileSightings">0</strong></div>
+              <div><b>◷</b><span>Last Seen</span><strong id="profileLastSeen">No sightings yet</strong></div>
+            </div>
+
+            <div class="profile-location-row">
+              <div><span>⌖</span><div><small>Location</small><strong id="profileLocation">Your Property</strong></div></div>
+              <button class="text-action" type="button" data-tab-jump="area-intel">View on Map ›</button>
+            </div>
+            <button class="timeline-button" type="button">⌁&nbsp; View Timeline &amp; History &nbsp;›</button>
           </div>
         </article>
 
@@ -258,16 +269,21 @@
         </article>
       </section>
 
-      <details class="workspace-drawer">
-        <summary>
-          <span>
-            <strong>Manage Deer Data</strong>
-            <small>Properties, cameras, uploads and recent photos</small>
-          </span>
-          <span class="drawer-chevron">⌄</span>
-        </summary>
+      <section class="manage-panel">
+        <div class="manage-heading">
+          <div><strong>Manage Deer Data</strong><small>Upload, organize, and manage your data.</small></div>
+        </div>
+        <div class="manage-tiles">
+          <button class="manage-tile" type="button" data-workspace="upload"><span class="tile-icon">▣</span><b>Upload Photos</b><small>Add trail cam photos<br>for analysis</small><i>→</i></button>
+          <button class="manage-tile" type="button" data-workspace="property"><span class="tile-icon">▱</span><b>My Properties</b><small>Manage your hunting<br>properties</small><i>→</i></button>
+          <button class="manage-tile" type="button" data-workspace="camera"><span class="tile-icon">▣</span><b>My Cameras</b><small>View and manage<br>your trail cameras</small><i>→</i></button>
+          <button class="manage-tile" type="button" data-workspace="photos"><span class="tile-icon">▤</span><b>Recent Photos</b><small>Review and analyze<br>recent captures</small><i>→</i></button>
+          <button class="manage-tile" type="button" data-workspace="ai"><span class="tile-icon">⌁</span><b>AI Analysis Queue</b><small>Check status of photo<br>processing</small><i>→</i></button>
+        </div>
 
-        <div class="workspace-content">
+        <details id="workspaceDrawer" class="workspace-drawer">
+          <summary><span><strong>Open Data Manager</strong><small>Properties, cameras, uploads, profiles and photos</small></span><span class="drawer-chevron">⌄</span></summary>
+          <div class="workspace-content">
           <div class="trail-grid two">
             <article class="intel-card compact-card">
               <div class="eyebrow">Property</div>
@@ -350,8 +366,9 @@
             <h3>Deer Analysis</h3>
             <p>DIE analyzes uploaded photos for deer presence, buck/doe/fawn counts, individual buck matches, antler traits, timestamps and hunting context.</p>
           </article>
-        </div>
-      </details>
+          </div>
+        </details>
+      </section>
 
     </section>
 
@@ -519,6 +536,8 @@
       ></div>
 
     </section>
+
+    </div>
 
   </main>
 
