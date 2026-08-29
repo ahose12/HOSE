@@ -12,7 +12,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 .app-layout{min-height:100vh}
 .sidebar-brand img{max-width:126px!important;max-height:126px!important;width:126px!important;height:126px!important;object-fit:contain!important}
 </style>
-  <link rel="stylesheet" href="die-dashboard-v5.css?v=20260828-2148">
+  <link rel="stylesheet" href="die-dashboard-v6.css?v=20260828-2205">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
 
@@ -154,6 +154,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
         <article class="card"><h3>Friend Requests</h3><div id="friendRequests" class="stack muted">No pending requests.</div></article>
       </div>
       <article class="card"><h3>My Friends</h3><div id="friendsList" class="stack muted">No friends yet.</div></article>
+      <article class="card"><h3>Shared With Me</h3><p class="muted">Open a shared property to see its mapped assets and camera activity.</p><div id="sharedPropertiesList" class="stack muted">No shared properties yet.</div></article>
       <article class="card"><h3>Share Hunting Access</h3><p class="muted">Choose a friend and share only the property or stand you want them to see.</p><label>Friend<select id="shareFriend"></select></label><label>Property<select id="shareProperty"></select></label><label>Stand (optional)<select id="shareStand"><option value="">Entire property</option></select></label><button id="shareAccessBtn" class="primary" type="button">Share Access</button><div id="shareMessage" class="small muted"></div></article>
       <article class="card" id="accountSettingsCard"><h3>Account Settings</h3><label>Username<input id="settingsUsername" placeholder="username"></label><label>Display Name<input id="settingsDisplayName" placeholder="Display name"></label><label>Email<input id="settingsEmail" disabled></label><button id="saveProfileBtn" class="primary" type="button">Save Profile</button><div id="profileMessage" class="small muted"></div></article>
     </section>
@@ -530,7 +531,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 <script src="supabase-config.js"></script>
 
 <div id="usernameGate" class="auth-gate hidden" style="z-index:9999"><article class="auth-card"><div class="eyebrow">Finish Your DIE Profile</div><h2>Create your username</h2><p>Your username is how friends find you. Your email stays private.</p><label>Username<input id="onboardingUsername" autocomplete="username" placeholder="austinhose"></label><label>Display name<input id="onboardingDisplayName" placeholder="Austin"></label><button id="saveUsernameBtn" class="primary" type="button">Continue to DIE</button><div id="usernameMessage" class="small muted"></div></article></div>
-<script src="die-dashboard-v5.js?v=20260828-2148"></script>
+<script src="die-dashboard-v6.js?v=20260828-2205"></script>
 
 </body>
 </html>
