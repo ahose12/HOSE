@@ -5,7 +5,14 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>DIE — Deer Intelligence Engine</title>
 
-  <link rel="stylesheet" href="styles.css">
+  <style>
+html,body{margin:0;background:#050706;color:#f5f5f1}
+body.is-authenticated .hero{display:none!important}
+body.is-authenticated .shell{max-width:none!important;margin:0!important;padding:0!important}
+.app-layout{min-height:100vh}
+.sidebar-brand img{max-width:126px!important;max-height:126px!important;width:126px!important;height:126px!important;object-fit:contain!important}
+</style>
+  <link rel="stylesheet" href="die-dashboard.css?v=20260828-2116">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
 
@@ -555,7 +562,7 @@
 <script src="supabase-config.js"></script>
 
 <div id="usernameGate" class="auth-gate hidden" style="z-index:9999"><article class="auth-card"><div class="eyebrow">Finish Your DIE Profile</div><h2>Create your username</h2><p>Your username is how friends find you. Your email stays private.</p><label>Username<input id="onboardingUsername" autocomplete="username" placeholder="austinhose"></label><label>Display name<input id="onboardingDisplayName" placeholder="Austin"></label><button id="saveUsernameBtn" class="primary" type="button">Continue to DIE</button><div id="usernameMessage" class="small muted"></div></article></div>
-<script src="app.js?v=20260828-profile2"></script>
+<script src="die-dashboard.js?v=20260828-2116"></script>
 
 </body>
 </html>
