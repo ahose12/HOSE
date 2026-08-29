@@ -30,6 +30,48 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 @media(max-width:900px){.history-filterbar,.history-metrics{grid-template-columns:1fr 1fr}.history-grid{grid-template-columns:1fr}}
 @media(max-width:560px){.history-filterbar,.history-metrics{grid-template-columns:1fr}}
 
+
+/* Area Intelligence v15 — map-first property builder */
+.area-v15{padding:0!important}
+.area-v15-titlebar{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:14px}
+.area-v15-titlebar h2{font-size:30px;margin:3px 0 3px}
+.area-v15-titlebar p{margin:0;color:#a7aea9}
+.area-v15-title-actions{display:flex;gap:9px}
+.area-v15-toolbar{display:grid;grid-template-columns:minmax(260px,1.45fr) auto auto repeat(5,minmax(100px,.62fr));gap:10px;align-items:center;background:#101310;border:1px solid #252b26;border-radius:10px;padding:12px;margin-bottom:12px}
+.area-v15-toolbar select,.area-v15-toolbar>button{height:42px}
+.area-v15-count{border-left:1px solid #282e29;padding-left:12px;min-width:0}
+.area-v15-count span{display:block;font-size:10px;color:#9ea5a0;white-space:nowrap}
+.area-v15-count strong{display:block;margin-top:4px;font-size:19px;color:#ff8500}
+.area-v15-map-stage{position:relative;height:560px;border:1px solid #272c28;border-radius:12px;overflow:hidden;background:#090c0a}
+.area-v15-map-stage #map{position:absolute;inset:0;height:100%!important;min-height:0!important;border-radius:0!important}
+.area-v15-left-tools{position:absolute;z-index:650;left:12px;top:12px;width:145px;background:rgba(9,12,10,.95);border:1px solid #303631;border-radius:9px;padding:10px;box-shadow:0 8px 30px rgba(0,0,0,.32)}
+.area-v15-left-tools h3,.area-v15-panel-card h3{font-size:11px;letter-spacing:.09em;margin:2px 0 7px;color:#f1f3f1}
+.area-v15-left-tools h3:not(:first-child){border-top:1px solid #252b27;padding-top:11px;margin-top:7px}
+.area-v15-left-tools button{display:block;width:100%;border:0;background:transparent;color:#f0f2f0;text-align:left;padding:8px 6px;border-radius:6px;font-size:12px;cursor:pointer}
+.area-v15-left-tools button:hover,.area-v15-left-tools button.active,.area-v15-left-tools #areaBoundaryBtn.boundary-help{background:#181d19;color:#ff8500}
+.area-v15-right-tools{position:absolute;z-index:650;right:12px;top:12px;width:225px;display:grid;gap:10px}
+.area-v15-panel-card{background:rgba(9,12,10,.95);border:1px solid #303631;border-radius:9px;padding:11px;box-shadow:0 8px 30px rgba(0,0,0,.32)}
+.area-v15-panel-card p{font-size:11px;color:#9ea5a0;margin:0 0 9px}
+.area-v15-asset-picker{display:grid!important;grid-template-columns:repeat(3,1fr)!important;gap:7px!important}
+.area-v15-asset-picker button{min-height:58px!important;background:#111612!important;border:1px solid #303631!important;border-radius:8px!important;color:#fff!important;display:flex!important;flex-direction:column!important;justify-content:center!important;align-items:center!important;gap:4px!important;padding:5px!important}
+.area-v15-asset-picker button b{font-size:17px}.area-v15-asset-picker button span{font-size:9px}
+.area-v15-asset-picker button.active{border-color:#ff8500!important;box-shadow:0 0 0 1px #ff8500 inset}
+.area-v15-tip{margin-top:9px;border:1px solid #2a302b;border-radius:7px;padding:8px;font-size:10px;color:#a7aea9;line-height:1.35}
+.area-v15-view-buttons{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:7px}
+.area-v15-view-buttons button{height:34px;background:#111612;border:1px solid #303631;color:#fff;border-radius:7px}
+.area-v15-view-buttons button.active{border-color:#ff8500;color:#ff8500}
+.area-v15-panel-card label{display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:11px;color:#d7dcd8}
+.area-v15-bottom{display:grid;grid-template-columns:.9fr .9fr 1.45fr;gap:12px;margin-top:12px}
+.area-v15-bottom-card{background:#101310;border:1px solid #252b26;border-radius:10px;padding:14px;min-height:180px}
+.area-v15-bottom-card label{display:grid;grid-template-columns:92px 1fr;align-items:center;gap:10px;margin:8px 0;font-size:11px;color:#a9b0aa}
+.area-v15-bottom-card input,.area-v15-bottom-card textarea{background:#0b0f0c;border:1px solid #2a302b;color:#f5f5f5;border-radius:6px;padding:8px}
+.area-v15-statrow{display:flex;justify-content:space-between;gap:15px;border-bottom:1px solid #222722;padding:9px 0;font-size:12px}
+.area-v15-statrow span{color:#a9b0aa}
+.area-v15-activity{display:grid;gap:7px;font-size:12px}
+.area-v15-activity>div{padding:7px 0;border-bottom:1px solid #222722}
+@media(max-width:1250px){.area-v15-toolbar{grid-template-columns:minmax(230px,1fr) auto auto repeat(2,1fr)}.area-v15-count:nth-last-child(-n+3){display:none}}
+@media(max-width:900px){.area-v15-titlebar{flex-direction:column}.area-v15-map-stage{height:650px}.area-v15-right-tools{width:200px}.area-v15-left-tools{width:132px}.area-v15-bottom{grid-template-columns:1fr}.area-v15-toolbar{grid-template-columns:1fr 1fr}.area-v15-count{display:none}}
+
 </style>
   <link rel="stylesheet" href="die-dashboard-v7.css?v=20260829-001">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -618,63 +660,111 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
     <!-- =================================================== -->
     <!-- TAB 2: AREA INTELLIGENCE / PROPERTY MAP -->
     <!-- =================================================== -->
-    <section id="tab-area-intel" class="tab-panel hidden area-property-tab">
-      <div class="area-titlebar">
+    <section id="tab-area-intel" class="tab-panel hidden area-property-tab area-v15">
+      <div class="area-v15-titlebar">
         <div>
           <div class="eyebrow">AREA INTELLIGENCE</div>
           <h2>Manage Your Hunting Property</h2>
-          <p>Add and organize your properties, cameras, stands, feeders, scrapes, and more. Build your intel. Plan your hunt.</p>
+          <p>Draw or select your property boundary, then add cameras, stands, feeders, and more directly on the map.</p>
         </div>
-        <div class="area-title-actions">
+        <div class="area-v15-title-actions">
           <button id="areaMyPropertiesBtn" class="secondary" type="button">☷ My Properties</button>
-          <button id="areaAddPropertyBtn" class="primary" type="button">＋ Add Property</button>
+          <button id="areaAddPropertyBtn" class="primary" type="button">＋ New Property</button>
         </div>
       </div>
 
-      <div class="area-property-toolbar">
-        <label class="area-property-select"><span>SELECT PROPERTY</span><select id="areaPropertySelect"><option value="">Choose property…</option></select></label>
-        <button id="areaBoundaryBtn" class="secondary" type="button">◇ Draw Property Boundary</button>
-        <div class="area-count"><span>📷 Cameras</span><strong id="areaCameraCount">0</strong></div>
-        <div class="area-count"><span>♜ Stands</span><strong id="areaStandCount">0</strong></div>
-        <div class="area-count"><span>▾ Feeders</span><strong id="areaFeederCount">0</strong></div>
-        <div class="area-count"><span>♨ Scrapes</span><strong id="areaScrapeCount">0</strong></div>
-        <div class="area-count"><span>＋ Other</span><strong id="areaOtherCount">0</strong></div>
+      <div class="area-v15-toolbar">
+        <select id="areaPropertySelect"><option value="">Choose property…</option></select>
+        <button id="areaSaveBtn" class="primary" type="button">Save Property</button>
+        <button id="areaCancelBtn" class="secondary" type="button">Cancel</button>
+        <div class="area-v15-count"><span>📷 Cameras</span><strong id="areaCameraCount">0</strong></div>
+        <div class="area-v15-count"><span>♜ Stands</span><strong id="areaStandCount">0</strong></div>
+        <div class="area-v15-count"><span>▾ Feeders</span><strong id="areaFeederCount">0</strong></div>
+        <div class="area-v15-count"><span>♨ Scrapes</span><strong id="areaScrapeCount">0</strong></div>
+        <div class="area-v15-count"><span>＋ Other</span><strong id="areaOtherCount">0</strong></div>
       </div>
 
-      <div class="property-map-shell">
+      <div class="area-v15-map-stage">
         <div id="map"></div>
-        <aside class="map-tools-panel">
-          <div class="map-tool-card">
+
+        <aside class="area-v15-left-tools">
+          <h3>DRAW PROPERTY</h3>
+          <button id="areaSelectParcelBtn" type="button">⌾ Select Parcel</button>
+          <button id="areaBoundaryBtn" type="button">⬡ Draw Polygon</button>
+          <button id="areaFreehandBtn" type="button">✎ Draw Freehand</button>
+
+          <h3>EDIT</h3>
+          <button id="areaMoveBtn" type="button">✥ Move</button>
+          <button id="areaEditBtn" type="button">✎ Edit Boundary</button>
+          <button id="areaDeleteBtn" type="button">⌫ Delete</button>
+
+          <h3>MAP TOOLS</h3>
+          <button id="areaUndoBtn" type="button">↶ Undo</button>
+          <button id="areaRedoBtn" type="button">↷ Redo</button>
+          <button id="areaClearBtn" type="button">⌫ Clear All</button>
+        </aside>
+
+        <aside class="area-v15-right-tools">
+          <div class="area-v15-panel-card">
             <h3>ADD ASSET</h3>
-            <p>Choose an asset type, then click the map to place it.</p>
-            <div class="asset-picker">
+            <p>Click an asset type, then click on the map.</p>
+            <div class="asset-picker area-v15-asset-picker">
               <button data-asset-type="camera" type="button"><b>📷</b><span>Camera</span></button>
               <button data-asset-type="stand" type="button"><b>♜</b><span>Stand</span></button>
               <button data-asset-type="feeder" type="button"><b>▾</b><span>Feeder</span></button>
               <button data-asset-type="scrape" type="button"><b>♨</b><span>Scrape</span></button>
-              <button data-asset-type="foodplot" type="button"><b>♧</b><span>Food Plot</span></button>
               <button data-asset-type="water" type="button"><b>◆</b><span>Water</span></button>
+              <button data-asset-type="foodplot" type="button"><b>♧</b><span>Food Plot</span></button>
               <button data-asset-type="shootinghouse" type="button"><b>⌂</b><span>Shooting House</span></button>
               <button data-asset-type="trail" type="button"><b>⌁</b><span>Trail</span></button>
-              <button data-asset-type="other" type="button"><b>＋</b><span>Other</span></button>
+              <button data-asset-type="other" type="button"><b>•••</b><span>Other</span></button>
             </div>
-            <div id="areaPlaceMessage" class="small muted">Select a property to begin.</div>
+            <div id="areaPlaceMessage" class="area-v15-tip">Select a property to begin.</div>
           </div>
-          <div class="map-tool-card">
-            <h3>MAP VIEW</h3>
-            <div class="map-view-buttons"><button id="areaSatelliteBtn" class="active" type="button">Satellite</button><button id="areaStreetBtn" type="button">Map</button></div>
-            <label class="map-check"><input id="areaBoundaryLayer" type="checkbox" checked> Property boundary</label>
-            <label class="map-check"><input id="areaAssetLayer" type="checkbox" checked> Property assets</label>
-            <label class="map-check"><input id="areaParcelLayer" type="checkbox"> Tax parcel borders</label>
+
+          <div class="area-v15-panel-card">
+            <h3>MAP LAYERS</h3>
+            <div class="area-v15-view-buttons">
+              <button id="areaSatelliteBtn" class="active" type="button">Satellite</button>
+              <button id="areaStreetBtn" type="button">Map</button>
+            </div>
+            <label><span>Property Boundary</span><input id="areaBoundaryLayer" type="checkbox" checked></label>
+            <label><span>Property Assets</span><input id="areaAssetLayer" type="checkbox" checked></label>
+            <label><span>Tax Parcel Borders</span><input id="areaParcelLayer" type="checkbox"></label>
             <div id="areaParcelStatus" class="small muted">Parcel borders load from available county tax/GIS services.</div>
           </div>
         </aside>
       </div>
 
-      <div class="area-asset-list-panel">
-        <div><div class="eyebrow">PROPERTY ASSETS</div><strong id="areaAssetTitle">Select a property</strong></div>
-        <div id="areaAssetList" class="area-asset-list"><span class="muted">Your cameras, stands, feeders, scrapes and other map points will appear here.</span></div>
+      <div class="area-v15-bottom">
+        <article class="area-v15-bottom-card">
+          <div class="eyebrow">PROPERTY DETAILS</div>
+          <label>Name<input id="areaV15Name" type="text" placeholder="Property name"></label>
+          <label>Acres<input id="areaV15Acres" type="number" step="0.1" placeholder="0.0"></label>
+          <label>Location<input id="areaV15Location" type="text" placeholder="County, AL"></label>
+          <label>Property Notes<textarea id="areaV15Notes" rows="4" placeholder="Property notes..."></textarea></label>
+        </article>
+
+        <article class="area-v15-bottom-card">
+          <div class="eyebrow">PROPERTY STATS</div>
+          <div class="area-v15-statrow"><span>Total Acres</span><strong id="areaV15StatAcres">—</strong></div>
+          <div class="area-v15-statrow"><span>Cameras</span><strong id="areaV15StatCameras">0</strong></div>
+          <div class="area-v15-statrow"><span>Stands</span><strong id="areaV15StatStands">0</strong></div>
+          <div class="area-v15-statrow"><span>Feeders</span><strong id="areaV15StatFeeders">0</strong></div>
+          <div class="area-v15-statrow"><span>Scrapes</span><strong id="areaV15StatScrapes">0</strong></div>
+          <div class="area-v15-statrow"><span>Other Assets</span><strong id="areaV15StatOther">0</strong></div>
+        </article>
+
+        <article class="area-v15-bottom-card">
+          <div class="eyebrow">RECENT ACTIVITY</div>
+          <div id="areaV15Activity" class="area-v15-activity">
+            <div class="muted">Property and asset updates will appear here.</div>
+          </div>
+        </article>
       </div>
+
+      <div id="areaAssetList" class="hidden"></div>
+      <strong id="areaAssetTitle" class="hidden">Select a property</strong>
 
       <!-- Legacy hidden elements retained for compatibility with older DIE JS -->
       <div class="hidden" aria-hidden="true">
@@ -701,7 +791,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 <script src="supabase-config.js"></script>
 
 <div id="usernameGate" class="auth-gate hidden" style="z-index:9999"><article class="auth-card"><div class="eyebrow">Finish Your DIE Profile</div><h2>Create your username</h2><p>Your username is how friends find you. Your email stays private.</p><label>Username<input id="onboardingUsername" autocomplete="username" placeholder="austinhose"></label><label>Display name<input id="onboardingDisplayName" placeholder="Austin"></label><button id="saveUsernameBtn" class="primary" type="button">Continue to DIE</button><div id="usernameMessage" class="small muted"></div></article></div>
-<script src="die-dashboard-v14.js?v=14"></script>
+<script src="die-dashboard-v15.js?v=15"></script>
 
 </body>
 </html>
