@@ -12,7 +12,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 .app-layout{min-height:100vh}
 .sidebar-brand img{max-width:126px!important;max-height:126px!important;width:126px!important;height:126px!important;object-fit:contain!important}
 </style>
-  <link rel="stylesheet" href="die-dashboard-v6.css?v=20260828-2205">
+  <link rel="stylesheet" href="die-dashboard-v7.css?v=20260829-001">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
 
@@ -414,18 +414,44 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
         <div>
           <div class="eyebrow">Operations</div>
           <h1>Plan a Hunt</h1>
-          <p>Plan a hunt on one of your properties or choose Alabama public land.</p>
+          <p>Start by choosing whether you are hunting private property or public land.</p>
         </div>
+      </div>
+
+      <div class="hunt-type-row" role="group" aria-label="Hunt type">
+        <button id="huntTypePrivate" class="hunt-type-card active" type="button" data-hunt-type="private">
+          <span class="hunt-type-icon">⌂</span>
+          <span><strong>Private Property</strong><small>Use your property map, cameras, stands, deer history and assets.</small></span>
+        </button>
+        <button id="huntTypePublic" class="hunt-type-card" type="button" data-hunt-type="public">
+          <span class="hunt-type-icon">△</span>
+          <span><strong>Public Land</strong><small>Choose Alabama public land, view it on the map, and find nearby lodging.</small></span>
+        </button>
       </div>
 
       <div class="planner-grid">
         <article class="intel-card planner-controls">
           <div class="eyebrow">Build a Hunt</div>
-          <h3>Plan Your Sit</h3>
-          <label>My property<select id="plannerProperty"><option value="">Choose one of your properties…</option></select></label>
-          <div class="planner-or">or</div>
-          <label>Public land<select id="plannerPublicLand"><option value="">Choose public land…</option></select></label>
-          <label>Target deer<select id="plannerDeer"><option value="">Any deer</option></select></label>
+          <h3 id="plannerControlsTitle">Private Property Hunt</h3>
+
+          <div id="plannerPrivateFields">
+            <label>Property<select id="plannerProperty"><option value="">Choose one of your properties…</option></select></label>
+          </div>
+
+          <div id="plannerPublicFields" class="hidden">
+            <label>Public land<select id="plannerPublicLand"><option value="">Choose public land…</option></select></label>
+          </div>
+
+          <div class="target-choice-block">
+            <span class="field-label">Target buck?</span>
+            <div class="segmented-choice" role="group" aria-label="Target buck choice">
+              <button id="plannerAnyDeerBtn" class="segment-btn active" type="button" data-target-mode="any">No — hunt general movement</button>
+              <button id="plannerTargetBuckBtn" class="segment-btn" type="button" data-target-mode="buck">Yes — target a buck</button>
+            </div>
+          </div>
+
+          <label id="plannerDeerWrap" class="hidden">Target buck<select id="plannerDeer"><option value="">Choose target buck…</option></select></label>
+
           <div class="form-grid">
             <label>Hunt date<input id="plannerDate" type="date"></label>
             <label>Time<select id="plannerTime"><option value="morning">Morning</option><option value="evening">Evening</option><option value="all-day">All day</option></select></label>
@@ -435,16 +461,37 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 
         <article class="intel-card planner-output">
           <div class="eyebrow">DIE Recommendation</div>
-          <h3 id="plannerTitle">Choose a property to start</h3>
-          <p id="plannerSummary" class="muted">DIE will use the deer profiles and sightings already in your account to organize your hunt.</p>
+          <h3 id="plannerTitle">Choose a private property to start</h3>
+          <p id="plannerSummary" class="muted">DIE will use your property layout, deer profiles and sightings to organize the hunt.</p>
           <div class="planner-metrics">
             <div><span>Target</span><strong id="plannerTarget">—</strong></div>
             <div><span>Sightings</span><strong id="plannerSightings">—</strong></div>
             <div><span>Last Seen</span><strong id="plannerLastSeen">—</strong></div>
           </div>
-          <div class="planner-callout" id="plannerCallout">Choose your property or public land, then build the plan.</div>
+          <div class="planner-callout" id="plannerCallout">Choose your property, decide whether you are targeting a buck, then build the plan.</div>
         </article>
       </div>
+
+      <section id="publicHuntMapSection" class="public-hunt-map-section hidden">
+        <div class="public-hunt-map-head">
+          <div>
+            <div class="eyebrow">Public Hunt Logistics</div>
+            <h2 id="publicHuntMapTitle">Public Land Map + Nearby Hotels</h2>
+            <p id="publicHuntMapStatus">Choose a public hunting area to load the map and nearby lodging.</p>
+          </div>
+          <div class="public-map-actions">
+            <button id="publicMapStreetBtn" class="secondary active" type="button">Map</button>
+            <button id="publicMapSatelliteBtn" class="secondary" type="button">Satellite</button>
+          </div>
+        </div>
+        <div class="public-map-layout">
+          <div id="publicHuntMap" class="public-hunt-map" aria-label="Public hunting land and nearby hotels map"></div>
+          <aside class="hotel-panel">
+            <div class="hotel-panel-head"><div><div class="eyebrow">Nearby Lodging</div><h3>Hotels</h3></div><span id="hotelCount" class="hotel-count">0</span></div>
+            <div id="hotelResults" class="hotel-results"><p class="muted">Select public land to search for hotels nearby.</p></div>
+          </aside>
+        </div>
+      </section>
     </section>
 
     <!-- =================================================== -->
@@ -531,7 +578,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 <script src="supabase-config.js"></script>
 
 <div id="usernameGate" class="auth-gate hidden" style="z-index:9999"><article class="auth-card"><div class="eyebrow">Finish Your DIE Profile</div><h2>Create your username</h2><p>Your username is how friends find you. Your email stays private.</p><label>Username<input id="onboardingUsername" autocomplete="username" placeholder="austinhose"></label><label>Display name<input id="onboardingDisplayName" placeholder="Austin"></label><button id="saveUsernameBtn" class="primary" type="button">Continue to DIE</button><div id="usernameMessage" class="small muted"></div></article></div>
-<script src="die-dashboard-v6.js?v=20260828-2205"></script>
+<script src="die-dashboard-v7.js?v=20260829-001"></script>
 
 </body>
 </html>
