@@ -11,6 +11,25 @@ body.is-authenticated .hero{display:none!important}
 body.is-authenticated .shell{max-width:none!important;margin:0!important;padding:0!important}
 .app-layout{min-height:100vh}
 .sidebar-brand{padding-top:4px!important;padding-bottom:28px!important}.sidebar-brand img{max-width:176px!important;max-height:176px!important;width:176px!important;height:176px!important;object-fit:contain!important}.sidebar-brand-sub{font-size:12px!important;line-height:1.25!important;letter-spacing:.12em!important;margin-top:4px!important}.app-layout{grid-template-columns:240px minmax(0,1fr)!important}
+
+.history-filterbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:end;margin-bottom:18px}
+.history-filterbar label{margin:0}.history-filterbar button{height:44px}
+.history-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:16px 0}
+.history-metric{border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.025);border-radius:14px;padding:16px}
+.history-metric span{display:block;color:#9ca3af;font-size:12px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:7px}
+.history-metric strong{display:block;font-size:28px;line-height:1.05}.history-metric small{color:#9ca3af}
+.harvest-chart{display:flex;align-items:flex-end;gap:7px;height:220px;padding:18px 8px 30px;border-bottom:1px solid rgba(255,255,255,.08);overflow-x:auto}
+.harvest-bar-wrap{min-width:38px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;gap:5px}
+.harvest-bar{width:24px;min-height:3px;border-radius:5px 5px 2px 2px;background:linear-gradient(180deg,#ffb04a,#ed7b13)}
+.harvest-bar-wrap small{font-size:10px;color:#9ca3af;white-space:nowrap}.harvest-bar-wrap b{font-size:10px}
+.history-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}
+.history-list{display:grid;gap:10px}.history-row{display:grid;grid-template-columns:110px 1fr auto;gap:12px;align-items:center;padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:12px}
+.history-row .pill{justify-self:end}.history-source{display:flex;gap:12px;align-items:flex-start;padding:13px;border:1px solid rgba(255,255,255,.08);border-radius:12px;margin-top:10px}
+.history-source strong{display:block;margin-bottom:3px}.history-source p{margin:0;color:#9ca3af;font-size:13px;line-height:1.45}
+.history-empty{padding:28px;text-align:center;border:1px dashed rgba(255,255,255,.12);border-radius:14px;color:#9ca3af}
+@media(max-width:900px){.history-filterbar,.history-metrics{grid-template-columns:1fr 1fr}.history-grid{grid-template-columns:1fr}}
+@media(max-width:560px){.history-filterbar,.history-metrics{grid-template-columns:1fr}}
+
 </style>
   <link rel="stylesheet" href="die-dashboard-v7.css?v=20260829-001">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -121,6 +140,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
         <button class="app-tab" data-tab="upload" type="button"><span>＋</span> Upload Deer</button>
         <button class="app-tab" data-tab="area-intel" type="button"><span>⌖</span> Area Intelligence</button>
         <button class="app-tab" data-tab="planner" type="button"><span>◎</span> Plan a Hunt</button>
+        <button class="app-tab" data-tab="history" type="button"><span>◷</span> History</button>
         <div class="side-divider"></div>
         <button class="side-action" data-action="activity" type="button"><span>⌁</span> Activity</button>
         <button class="app-tab" data-tab="friends" type="button"><span>♙</span> Friends</button>
@@ -502,6 +522,99 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
       </section>
     </section>
 
+
+    <!-- =================================================== -->
+    <!-- TAB: HARVEST + WEATHER HISTORY -->
+    <!-- =================================================== -->
+    <section id="tab-history" class="tab-panel hidden">
+      <div class="dashboard-topbar">
+        <div>
+          <div class="eyebrow">Historical Intelligence</div>
+          <h1>Harvest History</h1>
+          <p>Compare Alabama deer harvest timing with historical weather to identify conditions that have produced deer movement and reported harvests.</p>
+        </div>
+      </div>
+
+      <article class="intel-card">
+        <div class="history-filterbar">
+          <label>County
+            <select id="historyCounty"></select>
+          </label>
+          <label>Season
+            <select id="historySeason">
+              
+              <option value="2024-25" selected>2024–25</option>
+              <option value="2023-24">2023–24</option>
+              <option value="all">All available</option>
+            </select>
+          </label>
+          <label>Land
+            <select id="historyLand">
+              <option value="all">Public + Private</option>
+              <option value="public">Public</option>
+              <option value="private">Private</option>
+            </select>
+          </label>
+          <button id="historyRefreshBtn" class="primary" type="button">Analyze History</button>
+        </div>
+
+        <div id="historyDataStatus" class="planner-callout">
+          Official 2024-25 Alabama county harvest estimates are loaded for all 67 counties. DIE also looks for date-level Game Check records; weather prediction remains disabled until those public daily records can be retrieved.
+        </div>
+
+        <div class="history-metrics">
+          <div class="history-metric"><span>Reported Deer</span><strong id="historyTotal">—</strong><small id="historyTotalSub">Selected history</small></div>
+          <div class="history-metric"><span>Reported Bucks</span><strong id="historyBucks">—</strong><small>Antlered deer where available</small></div>
+          <div class="history-metric"><span>Peak Harvest Day</span><strong id="historyPeakDay">—</strong><small id="historyPeakCount">Needs daily records</small></div>
+          <div class="history-metric"><span>Weather Match</span><strong id="historyWeatherMatch">—</strong><small>Historical condition similarity</small></div>
+        </div>
+      </article>
+
+      <div class="history-grid">
+        <article class="intel-card">
+          <div class="eyebrow">Daily Harvest Pattern</div>
+          <h3 id="historyChartTitle">Reported harvest by day</h3>
+          <p class="muted">When daily Game Check records are available, this chart will show exactly how many reported bucks/deer were harvested each day.</p>
+          <div id="historyHarvestChart" class="harvest-chart">
+            <div class="history-empty" style="width:100%">No daily harvest feed connected yet.</div>
+          </div>
+        </article>
+
+        <article class="intel-card">
+          <div class="eyebrow">Weather Correlation</div>
+          <h3>Conditions Behind Harvest Peaks</h3>
+          <div id="historyWeatherRows" class="history-list">
+            <div class="history-empty">Connect daily harvest + historical weather to rank temperature, pressure, wind and frontal patterns.</div>
+          </div>
+        </article>
+      </div>
+
+      <div class="history-grid" style="margin-top:16px">
+        <article class="intel-card">
+          <div class="eyebrow">Official 2024-25 County Data</div>
+          <h3>County Harvest + Hunting Pressure</h3>
+          <div id="historyOfficialRows" class="history-list">
+            <div class="history-empty">Loading verified ADCNR harvest totals…</div>
+          </div>
+          <div class="history-source">
+            <span>↗</span>
+            <div><strong>Outdoor Alabama / ADCNR Game Check</strong><p>Every number shown here is from an official ADCNR/Outdoor Alabama publication. DIE does not estimate missing daily counts.</p></div>
+          </div>
+        </article>
+
+        <article class="intel-card">
+          <div class="eyebrow">How DIE Will Use It</div>
+          <h3>Historical Hunt Index</h3>
+          <div class="history-list">
+            <div class="history-row"><span>1</span><span>Reported harvest by county + date</span><strong>Game Check</strong></div>
+            <div class="history-row"><span>2</span><span>Temperature, wind, pressure + precipitation</span><strong>Weather</strong></div>
+            <div class="history-row"><span>3</span><span>Rut timing + public/private context</span><strong>Context</strong></div>
+            <div class="history-row"><span>4</span><span>Compare tomorrow to high-harvest historical days</span><strong>DIE</strong></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
     <!-- =================================================== -->
     <!-- TAB 2: AREA INTELLIGENCE / PROPERTY MAP -->
     <!-- =================================================== -->
@@ -588,7 +701,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 <script src="supabase-config.js"></script>
 
 <div id="usernameGate" class="auth-gate hidden" style="z-index:9999"><article class="auth-card"><div class="eyebrow">Finish Your DIE Profile</div><h2>Create your username</h2><p>Your username is how friends find you. Your email stays private.</p><label>Username<input id="onboardingUsername" autocomplete="username" placeholder="austinhose"></label><label>Display name<input id="onboardingDisplayName" placeholder="Austin"></label><button id="saveUsernameBtn" class="primary" type="button">Continue to DIE</button><div id="usernameMessage" class="small muted"></div></article></div>
-<script src="die-dashboard-v11.js?v=11"></script>
+<script src="die-dashboard-v14.js?v=14"></script>
 
 </body>
 </html>
