@@ -440,6 +440,14 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 
           <div id="plannerPublicFields" class="hidden">
             <label>Public land<select id="plannerPublicLand"><option value="">Choose public land…</option></select></label>
+            <label>Hotel search range
+              <select id="plannerHotelRadius">
+                <option value="5">5 miles</option>
+                <option value="10">10 miles</option>
+                <option value="25" selected>25 miles</option>
+                <option value="50">50 miles</option>
+              </select>
+            </label>
           </div>
 
           <div class="target-choice-block">
@@ -578,7 +586,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 <script src="supabase-config.js"></script>
 
 <div id="usernameGate" class="auth-gate hidden" style="z-index:9999"><article class="auth-card"><div class="eyebrow">Finish Your DIE Profile</div><h2>Create your username</h2><p>Your username is how friends find you. Your email stays private.</p><label>Username<input id="onboardingUsername" autocomplete="username" placeholder="austinhose"></label><label>Display name<input id="onboardingDisplayName" placeholder="Austin"></label><button id="saveUsernameBtn" class="primary" type="button">Continue to DIE</button><div id="usernameMessage" class="small muted"></div></article></div>
-<script src="die-dashboard-v7.js?v=20260829-001"></script>
+<script src="die-dashboard-v8.js?v=20260829-001"></script>
 
 </body>
 </html>
