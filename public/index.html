@@ -89,8 +89,7 @@
       <div
         id="authMessage"
         class="small muted"
-        aria-live="polite"
-      >Loading account services…</div>
+      ></div>
 
     </article>
 
@@ -114,7 +113,7 @@
           Signed in as
         </span>
 
-        <strong id="signedInEmail"></strong>
+        <strong id="signedInEmail"></strong><div id="signedInUsername" class="small muted"></div>
 
       </div>
 
@@ -143,24 +142,29 @@
         🦌 My Deer Intelligence
       </button>
 
+      <button class="app-tab" data-tab="friends" type="button">👥 Friends & Sharing</button>
+
       <button
         class="app-tab"
         data-tab="area-intel"
         type="button"
       >
-        📍 Area Intelligence
-      </button>
-
-      <button
-        class="app-tab"
-        data-tab="explore-plan"
-        type="button"
-      >
-        🗺 Explore &amp; Plan
+        🗺 Area Deer Intelligence
       </button>
 
     </nav>
 
+
+    <section id="tab-friends" class="tab-panel hidden">
+      <div class="section-heading"><div><div class="eyebrow">Private Hunting Network</div><h2>Friends & Sharing</h2><p>Find HOSE hunters by username and privately share selected properties and stands.</p></div></div>
+      <div class="grid two">
+        <article class="card"><h3>Find a Friend</h3><label>Username<input id="friendSearch" placeholder="@username"></label><button id="friendSearchBtn" class="primary" type="button">Search</button><div id="friendSearchResults" class="stack"></div></article>
+        <article class="card"><h3>Friend Requests</h3><div id="friendRequests" class="stack muted">No pending requests.</div></article>
+      </div>
+      <article class="card"><h3>My Friends</h3><div id="friendsList" class="stack muted">No friends yet.</div></article>
+      <article class="card"><h3>Share Hunting Access</h3><p class="muted">Choose a friend and share only the property or stand you want them to see.</p><label>Friend<select id="shareFriend"></select></label><label>Property<select id="shareProperty"></select></label><label>Stand (optional)<select id="shareStand"><option value="">Entire property</option></select></label><button id="shareAccessBtn" class="primary" type="button">Share Access</button><div id="shareMessage" class="small muted"></div></article>
+      <article class="card"><h3>Account Settings</h3><label>Username<input id="settingsUsername" placeholder="username"></label><label>Display Name<input id="settingsDisplayName" placeholder="Display name"></label><label>Email<input id="settingsEmail" disabled></label><button id="saveProfileBtn" class="primary" type="button">Save Profile</button><div id="profileMessage" class="small muted"></div></article>
+    </section>
 
     <!-- =================================================== -->
     <!-- TAB 1: MY DEER INTELLIGENCE -->
@@ -623,99 +627,11 @@
 
 
     <!-- =================================================== -->
-    <!-- TAB 2: PRIVATE AREA INTELLIGENCE -->
-    <!-- =================================================== -->
-
-    <section id="tab-area-intel" class="tab-panel hidden">
-      <div class="section-heading">
-        <div>
-          <div class="eyebrow">My Land</div>
-          <h2>Area Intelligence</h2>
-          <p>Drop your existing cameras and stands on the map so HOSE can connect deer activity to exact locations.</p>
-        </div>
-        <span class="private-pill">Private hunting map</span>
-      </div>
-
-      <article class="intel-card">
-        <div class="map-control-grid property-map-row">
-          <label>Property
-            <select id="mapProperty"><option value="">Choose property…</option></select>
-          </label>
-
-          <div class="property-location-control">
-            <span class="control-label">Property location</span>
-            <button id="setPropertyLocationBtn" class="secondary map-action" type="button">📍 Set Property Location</button>
-          </div>
-
-          <label>Camera to place
-            <select id="mapCamera"><option value="">Choose camera…</option></select>
-          </label>
-
-          <button id="placeCameraBtn" class="primary map-action" type="button">📷 Place Camera</button>
-        </div>
-
-        <div id="propertyLocationStatus" class="small property-location-status">
-          Choose a property, then set its approximate center on the map before placing cameras or stands.
-        </div>
-
-        <div class="map-control-grid">
-          <label>New stand name
-            <input id="standName" placeholder="Creek Stand">
-          </label>
-          <label>Stand habitat
-            <select id="standHabitat">
-              <option>Hardwoods</option><option>Field Edge</option><option>Creek / Drain</option>
-              <option>Ridge</option><option>Transition / Edge</option><option>Pines</option>
-              <option>Bedding Edge</option><option>Food Plot</option><option>Other</option>
-            </select>
-          </label>
-          <button id="addStandBtn" class="secondary map-action" type="button">🌲 Add Stand</button>
-        </div>
-
-        <div class="map-control-grid">
-          <label>Existing stand
-            <select id="mapStand"><option value="">Choose stand…</option></select>
-          </label>
-          <label>Pattern a deer
-            <select id="mapDeer"><option value="">All deer / no movement line</option></select>
-          </label>
-          <button id="placeStandBtn" class="secondary map-action" type="button">📍 Place Stand</button>
-        </div>
-
-        <div id="placementMessage" class="small muted">Choose a camera or stand, click Place, then click its real location on the map. Pins are draggable after placement.</div>
-      </article>
-
-      <div id="areaMap"></div>
-
-      <div class="metrics">
-        <div class="metric"><b id="areaCameraCount">0</b><span>mapped cameras</span></div>
-        <div class="metric"><b id="areaStandCount">0</b><span>mapped stands</span></div>
-        <div class="metric"><b id="areaSightingCount">0</b><span>sighting records</span></div>
-        <div class="metric"><b id="areaBuckCount">0</b><span>buck observations</span></div>
-      </div>
-
-      <div class="trail-grid two">
-        <article class="intel-card">
-          <div class="eyebrow">Camera Activity</div>
-          <h3>What Is Moving Where</h3>
-          <div id="cameraActivityCards" class="stack-list"></div>
-        </article>
-        <article class="intel-card">
-          <div class="eyebrow">Spatial Pattern</div>
-          <h3 id="spatialTitle">Property Pattern</h3>
-          <div id="spatialSummary" class="stack-list">
-            <div class="muted">Map cameras and process sightings to build spatial patterns.</div>
-          </div>
-        </article>
-      </div>
-    </section>
-
-    <!-- =================================================== -->
-    <!-- TAB 3: EXPLORE & PLAN -->
+    <!-- TAB 2: AREA DEER INTELLIGENCE -->
     <!-- =================================================== -->
 
     <section
-      id="tab-explore-plan"
+      id="tab-area-intel"
       class="tab-panel hidden"
     >
 
@@ -728,11 +644,12 @@
           </div>
 
           <h2>
-            Explore &amp; Plan
+            Real Estate + Public Land Deer Intelligence
           </h2>
 
           <p>
-            Search public hunting areas and confirmed external deer intelligence. Active listings and lodging feeds can be added here as HOSE planning data.
+            Search confirmed external deer observations around a private
+            address or Alabama public hunting area.
           </p>
 
         </div>
@@ -888,6 +805,8 @@
 
 <script src="supabase-config.js"></script>
 
-<script src="app.js?v=20260824-complete-uploadfix1"></script>
+<div id="usernameGate" class="auth-gate hidden" style="z-index:9999"><article class="auth-card"><div class="eyebrow">Finish Your HOSE Profile</div><h2>Create your username</h2><p>Your username is how friends find you. Your email stays private.</p><label>Username<input id="onboardingUsername" autocomplete="username" placeholder="austinhose"></label><label>Display name<input id="onboardingDisplayName" placeholder="Austin"></label><button id="saveUsernameBtn" class="primary" type="button">Continue to HOSE</button><div id="usernameMessage" class="small muted"></div></article></div>
+<script src="app.js?v=20260828-sharing1"></script>
+
 </body>
 </html>
