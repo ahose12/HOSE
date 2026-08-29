@@ -10,7 +10,7 @@ html,body{margin:0;background:#050706;color:#f5f5f1}
 body.is-authenticated .hero{display:none!important}
 body.is-authenticated .shell{max-width:none!important;margin:0!important;padding:0!important}
 .app-layout{min-height:100vh}
-.sidebar-brand img{max-width:126px!important;max-height:126px!important;width:126px!important;height:126px!important;object-fit:contain!important}
+.sidebar-brand{padding-top:4px!important;padding-bottom:28px!important}.sidebar-brand img{max-width:176px!important;max-height:176px!important;width:176px!important;height:176px!important;object-fit:contain!important}.sidebar-brand-sub{font-size:12px!important;line-height:1.25!important;letter-spacing:.12em!important;margin-top:4px!important}.app-layout{grid-template-columns:240px minmax(0,1fr)!important}
 </style>
   <link rel="stylesheet" href="die-dashboard-v7.css?v=20260829-001">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -552,6 +552,8 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
             <div class="map-view-buttons"><button id="areaSatelliteBtn" class="active" type="button">Satellite</button><button id="areaStreetBtn" type="button">Map</button></div>
             <label class="map-check"><input id="areaBoundaryLayer" type="checkbox" checked> Property boundary</label>
             <label class="map-check"><input id="areaAssetLayer" type="checkbox" checked> Property assets</label>
+            <label class="map-check"><input id="areaParcelLayer" type="checkbox"> Tax parcel borders</label>
+            <div id="areaParcelStatus" class="small muted">Parcel borders load from available county tax/GIS services.</div>
           </div>
         </aside>
       </div>
@@ -586,7 +588,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 <script src="supabase-config.js"></script>
 
 <div id="usernameGate" class="auth-gate hidden" style="z-index:9999"><article class="auth-card"><div class="eyebrow">Finish Your DIE Profile</div><h2>Create your username</h2><p>Your username is how friends find you. Your email stays private.</p><label>Username<input id="onboardingUsername" autocomplete="username" placeholder="austinhose"></label><label>Display name<input id="onboardingDisplayName" placeholder="Austin"></label><button id="saveUsernameBtn" class="primary" type="button">Continue to DIE</button><div id="usernameMessage" class="small muted"></div></article></div>
-<script src="die-dashboard-v8.js?v=20260829-001"></script>
+<script src="die-dashboard-v9.js?v=20260829-002"></script>
 
 </body>
 </html>
