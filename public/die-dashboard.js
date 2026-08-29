@@ -200,9 +200,12 @@ function setupTabs() {
             selected !== "my-intel"
           );
 
+          $("tab-upload")?.classList.toggle("hidden", selected !== "upload");
+          $("tab-planner")?.classList.toggle("hidden", selected !== "planner");
           $("tab-area-intel").classList.toggle("hidden", selected !== "area-intel");
           $("tab-friends")?.classList.toggle("hidden", selected !== "friends");
           if (selected === "friends") refreshFriendsSharing();
+          if (selected === "planner") refreshPlannerOptions();
 
           if (
             selected === "area-intel" &&
@@ -2019,6 +2022,8 @@ async function init() {
   $("friendSearchBtn")?.addEventListener("click",searchFriend);
   $("shareProperty")?.addEventListener("change",loadShareStands);
   $("shareAccessBtn")?.addEventListener("click",shareAccess);
+  $("plannerProperty")?.addEventListener("change", refreshPlannerDeer);
+  $("buildHuntPlanBtn")?.addEventListener("click", buildHuntPlan);
 
   $("profilePrevBtn")?.addEventListener("click",()=>moveProfile(-1));
   $("profileNextBtn")?.addEventListener("click",()=>moveProfile(1));
@@ -2067,8 +2072,7 @@ document.addEventListener("click", (event) => {
   }
 
   if (event.target.closest("#addDataTopBtn")) {
-    const drawer = document.getElementById("workspaceDrawer");
-    if (drawer) { drawer.open = true; setTimeout(() => drawer.scrollIntoView({behavior:"smooth",block:"start"}),20); }
+    document.querySelector('.app-tab[data-tab="upload"]')?.click();
   }
 
   if (event.target.closest("#editCurrentProfileBtnLeft")) {
@@ -2081,12 +2085,68 @@ document.addEventListener("click", (event) => {
   }
 
   const sideAction = event.target.closest(".side-action");
-  if (sideAction?.dataset.action === "planner") {
-    document.querySelector('.app-tab[data-tab="area-intel"]')?.click();
-  }
   if (sideAction?.dataset.action === "activity") {
     document.querySelector('.app-tab[data-tab="my-intel"]')?.click();
     const drawer = document.getElementById("workspaceDrawer");
     if (drawer) { drawer.open = true; setTimeout(() => drawer.scrollIntoView({behavior:"smooth",block:"start"}),30); }
   }
 });
+
+
+/* ============================================================
+   HUNT PLANNER
+   ============================================================ */
+function refreshPlannerOptions() {
+  const propertySelect = $("plannerProperty");
+  const deerSelect = $("plannerDeer");
+  if (!propertySelect || !deerSelect) return;
+
+  const currentProperty = propertySelect.value;
+  propertySelect.innerHTML = '<option value="">Choose property…</option>' +
+    (properties || []).map(p => `<option value="${p.id}">${esc(p.name || p.property_name || "Property")}</option>`).join("");
+  if (currentProperty) propertySelect.value = currentProperty;
+
+  refreshPlannerDeer();
+  if ($("plannerDate") && !$("plannerDate").value) {
+    $("plannerDate").value = new Date().toISOString().slice(0,10);
+  }
+}
+
+function refreshPlannerDeer() {
+  const deerSelect = $("plannerDeer");
+  const propertyId = $("plannerProperty")?.value || "";
+  if (!deerSelect) return;
+  const list = (deerProfiles || []).filter(d => !propertyId || d.property_id === propertyId);
+  deerSelect.innerHTML = '<option value="">Any deer</option>' + list.map(d =>
+    `<option value="${d.id}">${esc(d.nickname || d.deer_code || "Buck")}</option>`
+  ).join("");
+}
+
+function buildHuntPlan() {
+  const propertyId = $("plannerProperty")?.value;
+  if (!propertyId) {
+    $("plannerTitle").textContent = "Choose a property to start";
+    $("plannerCallout").textContent = "Select a property before building a hunt plan.";
+    return;
+  }
+
+  const property = (properties || []).find(p => p.id === propertyId);
+  const deerId = $("plannerDeer")?.value;
+  const deer = deerId ? (deerProfiles || []).find(d => d.id === deerId) : null;
+  const time = $("plannerTime")?.value || "morning";
+  const date = $("plannerDate")?.value || "your selected date";
+  const label = deer ? (deer.nickname || deer.deer_code || "Target buck") : "Any deer";
+  const sightings = deer?.sighting_count ?? deer?.sightings_count ?? 0;
+  const lastSeen = deer?.last_seen ? new Date(deer.last_seen).toLocaleDateString() : "Not available";
+
+  $("plannerTitle").textContent = `${property?.name || property?.property_name || "Property"} — ${time.replace("-", " ")} hunt`;
+  $("plannerSummary").textContent = deer
+    ? `Plan centered on ${label} using the profile history already stored in DIE.`
+    : "General property hunt using the movement data already stored in DIE.";
+  $("plannerTarget").textContent = label;
+  $("plannerSightings").textContent = String(sightings);
+  $("plannerLastSeen").textContent = lastSeen;
+  $("plannerCallout").textContent = deer
+    ? `For ${date}, review ${label}'s most recent camera locations and choose the stand that best matches the expected ${time} movement. Area Intelligence can be used alongside this plan for map context.`
+    : `For ${date}, use Area Intelligence to review camera activity and place your ${time} sit around the strongest recent movement.`;
+}

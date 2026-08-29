@@ -12,7 +12,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 .app-layout{min-height:100vh}
 .sidebar-brand img{max-width:126px!important;max-height:126px!important;width:126px!important;height:126px!important;object-fit:contain!important}
 </style>
-  <link rel="stylesheet" href="die-dashboard.css?v=20260828-2116">
+  <link rel="stylesheet" href="die-dashboard.css?v=20260828-2128">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
 
@@ -118,8 +118,9 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 
       <nav class="sidebar-nav" aria-label="DIE navigation">
         <button class="app-tab active" data-tab="my-intel" type="button"><span>⌖</span> My Deer Intelligence</button>
+        <button class="app-tab" data-tab="upload" type="button"><span>＋</span> Upload Deer</button>
         <button class="app-tab" data-tab="area-intel" type="button"><span>⌖</span> Area Intelligence</button>
-        <button class="side-action" data-action="planner" type="button"><span>◎</span> Hunt Planner</button>
+        <button class="app-tab" data-tab="planner" type="button"><span>◎</span> Hunt Planner</button>
         <button class="app-tab" data-tab="area-intel" type="button"><span>♜</span> Public Land</button>
         <div class="side-divider"></div>
         <button class="app-tab" data-tab="area-intel" type="button"><span>◇</span> Map</button>
@@ -281,7 +282,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
           <div><strong>Manage Deer Data</strong><small>Upload, organize, and manage your data.</small></div>
         </div>
         <div class="manage-tiles">
-          <button class="manage-tile" type="button" data-workspace="upload"><span class="tile-icon">▣</span><b>Upload Photos</b><small>Add trail cam photos<br>for analysis</small><i>→</i></button>
+          <button class="manage-tile" type="button" data-tab-jump="upload"><span class="tile-icon">▣</span><b>Upload Deer</b><small>Add trail cam photos<br>for analysis</small><i>→</i></button>
           <button class="manage-tile" type="button" data-workspace="property"><span class="tile-icon">▱</span><b>My Properties</b><small>Manage your hunting<br>properties</small><i>→</i></button>
           <button class="manage-tile" type="button" data-workspace="camera"><span class="tile-icon">▣</span><b>My Cameras</b><small>View and manage<br>your trail cameras</small><i>→</i></button>
           <button class="manage-tile" type="button" data-workspace="photos"><span class="tile-icon">▤</span><b>Recent Photos</b><small>Review and analyze<br>recent captures</small><i>→</i></button>
@@ -339,25 +340,6 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
             </article>
           </div>
 
-          <article class="intel-card upload-card-clean">
-            <div class="upload-card-head">
-              <div><div class="eyebrow">Trail Camera Upload</div><h3>Upload Photos</h3></div>
-              <div class="upload-selectors">
-                <select id="uploadProperty"><option value="">Choose property…</option></select>
-                <select id="uploadCamera"><option value="">Choose camera…</option></select>
-              </div>
-            </div>
-            <div class="dropzone compact-dropzone">
-              <input id="photoUpload" type="file" accept="image/*" multiple>
-              <div class="drop-icon">＋</div>
-              <strong>Add trail-camera photos</strong>
-              <span>Private to your DIE account</span>
-            </div>
-            <div class="upload-summary"><span id="uploadCount">0 files selected</span><button id="processUploadBtn" class="primary" type="button">Upload & Analyze</button></div>
-            <div id="uploadProgress" class="small muted"></div>
-            <div id="photoPreviewSection" class="hidden"><div class="eyebrow">Selected Photos</div><div id="photoPreviewGrid" class="photo-grid"></div></div>
-          </article>
-
           <div class="trail-grid two">
             <article class="intel-card compact-card"><div class="eyebrow">Camera Network</div><h3>My Cameras</h3><div id="cameraCards" class="stack-list"></div></article>
             <article class="intel-card compact-card"><div class="eyebrow">Profiles</div><h3>All Deer Profiles</h3><div id="deerCards" class="stack-list"></div></article>
@@ -379,6 +361,90 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 
     </section>
 
+
+    <!-- =================================================== -->
+    <!-- TAB: UPLOAD DEER -->
+    <!-- =================================================== -->
+
+    <section id="tab-upload" class="tab-panel hidden">
+      <div class="dashboard-topbar">
+        <div>
+          <div class="eyebrow">Trail Camera Intake</div>
+          <h1>Upload Deer</h1>
+          <p>Add trail-camera photos and send them directly into DIE analysis.</p>
+        </div>
+      </div>
+
+      <article class="intel-card upload-card-clean upload-page-card">
+        <div class="upload-card-head">
+          <div><div class="eyebrow">Choose Destination</div><h3>Trail Camera Photos</h3><p class="muted">Select the property and camera before adding photos.</p></div>
+          <div class="upload-selectors">
+            <select id="uploadProperty"><option value="">Choose property…</option></select>
+            <select id="uploadCamera"><option value="">Choose camera…</option></select>
+          </div>
+        </div>
+        <div class="dropzone upload-page-dropzone">
+          <input id="photoUpload" type="file" accept="image/*" multiple>
+          <div class="drop-icon">＋</div>
+          <strong>Select trail-camera photos</strong>
+          <span>JPG, PNG or phone images • Multiple photos supported • Private to your DIE account</span>
+        </div>
+        <div class="upload-summary">
+          <span id="uploadCount">0 files selected</span>
+          <button id="processUploadBtn" class="primary" type="button">Upload & Analyze</button>
+        </div>
+        <div id="uploadProgress" class="small muted"></div>
+        <div id="photoPreviewSection" class="hidden">
+          <div class="eyebrow">Selected Photos</div>
+          <div id="photoPreviewGrid" class="photo-grid upload-preview-grid"></div>
+        </div>
+      </article>
+
+      <div class="trail-grid two upload-help-grid">
+        <article class="intel-card compact-note"><div class="eyebrow">What DIE Does</div><h3>Automatic Analysis</h3><p>DIE checks deer presence, buck/doe/fawn counts, antler traits, individual buck matches and hunting context after upload.</p></article>
+        <article class="intel-card compact-note"><div class="eyebrow">Best Results</div><h3>Keep Camera Context Accurate</h3><p>Assign each upload to the correct property and camera so movement history and future hunt recommendations stay useful.</p></article>
+      </div>
+    </section>
+
+    <!-- =================================================== -->
+    <!-- TAB: HUNT PLANNER -->
+    <!-- =================================================== -->
+
+    <section id="tab-planner" class="tab-panel hidden">
+      <div class="dashboard-topbar">
+        <div>
+          <div class="eyebrow">Operations</div>
+          <h1>Hunt Planner</h1>
+          <p>Turn your property, deer and sighting history into a simple hunt plan.</p>
+        </div>
+      </div>
+
+      <div class="planner-grid">
+        <article class="intel-card planner-controls">
+          <div class="eyebrow">Build a Hunt</div>
+          <h3>Plan Your Sit</h3>
+          <label>Property<select id="plannerProperty"><option value="">Choose property…</option></select></label>
+          <label>Target deer<select id="plannerDeer"><option value="">Any deer</option></select></label>
+          <div class="form-grid">
+            <label>Hunt date<input id="plannerDate" type="date"></label>
+            <label>Time<select id="plannerTime"><option value="morning">Morning</option><option value="evening">Evening</option><option value="all-day">All day</option></select></label>
+          </div>
+          <button id="buildHuntPlanBtn" class="primary" type="button">Build Hunt Plan</button>
+        </article>
+
+        <article class="intel-card planner-output">
+          <div class="eyebrow">DIE Recommendation</div>
+          <h3 id="plannerTitle">Choose a property to start</h3>
+          <p id="plannerSummary" class="muted">DIE will use the deer profiles and sightings already in your account to organize your hunt.</p>
+          <div class="planner-metrics">
+            <div><span>Target</span><strong id="plannerTarget">—</strong></div>
+            <div><span>Sightings</span><strong id="plannerSightings">—</strong></div>
+            <div><span>Last Seen</span><strong id="plannerLastSeen">—</strong></div>
+          </div>
+          <div class="planner-callout" id="plannerCallout">Select a property and target deer, then build the plan.</div>
+        </article>
+      </div>
+    </section>
 
     <!-- =================================================== -->
     <!-- TAB 2: AREA DEER INTELLIGENCE -->
@@ -562,7 +628,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 <script src="supabase-config.js"></script>
 
 <div id="usernameGate" class="auth-gate hidden" style="z-index:9999"><article class="auth-card"><div class="eyebrow">Finish Your DIE Profile</div><h2>Create your username</h2><p>Your username is how friends find you. Your email stays private.</p><label>Username<input id="onboardingUsername" autocomplete="username" placeholder="austinhose"></label><label>Display name<input id="onboardingDisplayName" placeholder="Austin"></label><button id="saveUsernameBtn" class="primary" type="button">Continue to DIE</button><div id="usernameMessage" class="small muted"></div></article></div>
-<script src="die-dashboard.js?v=20260828-2116"></script>
+<script src="die-dashboard.js?v=20260828-2128"></script>
 
 </body>
 </html>
