@@ -2022,7 +2022,16 @@ async function init() {
   $("friendSearchBtn")?.addEventListener("click",searchFriend);
   $("shareProperty")?.addEventListener("change",loadShareStands);
   $("shareAccessBtn")?.addEventListener("click",shareAccess);
-  $("plannerProperty")?.addEventListener("change", refreshPlannerDeer);
+  $("plannerProperty")?.addEventListener("change", () => {
+    if ($("plannerProperty")?.value && $("plannerPublicLand")) $("plannerPublicLand").value = "";
+    refreshPlannerDeer();
+  });
+  $("plannerPublicLand")?.addEventListener("change", () => {
+    if ($("plannerPublicLand")?.value && $("plannerProperty")) {
+      $("plannerProperty").value = "";
+      refreshPlannerDeer();
+    }
+  });
   $("buildHuntPlanBtn")?.addEventListener("click", buildHuntPlan);
 
   $("profilePrevBtn")?.addEventListener("click",()=>moveProfile(-1));
@@ -2098,13 +2107,33 @@ document.addEventListener("click", (event) => {
    ============================================================ */
 function refreshPlannerOptions() {
   const propertySelect = $("plannerProperty");
+  const publicLandSelect = $("plannerPublicLand");
   const deerSelect = $("plannerDeer");
   if (!propertySelect || !deerSelect) return;
 
   const currentProperty = propertySelect.value;
-  propertySelect.innerHTML = '<option value="">Choose property…</option>' +
+  propertySelect.innerHTML = '<option value="">Choose one of your properties…</option>' +
     (properties || []).map(p => `<option value="${p.id}">${esc(p.name || p.property_name || "Property")}</option>`).join("");
   if (currentProperty) propertySelect.value = currentProperty;
+
+  if (publicLandSelect) {
+    const currentLand = publicLandSelect.value;
+    const groups = {};
+    (publicLands || []).forEach(land => ((groups[land.type || "Public Land"] ??= []).push(land)));
+    publicLandSelect.innerHTML = '<option value="">Choose public land…</option>';
+    Object.keys(groups).sort().forEach(type => {
+      const group = document.createElement("optgroup");
+      group.label = type;
+      groups[type].sort((a,b) => (a.name || "").localeCompare(b.name || "")).forEach(land => {
+        const option = document.createElement("option");
+        option.value = land.id;
+        option.textContent = land.name;
+        group.appendChild(option);
+      });
+      publicLandSelect.appendChild(group);
+    });
+    if (currentLand) publicLandSelect.value = currentLand;
+  }
 
   refreshPlannerDeer();
   if ($("plannerDate") && !$("plannerDate").value) {
@@ -2123,30 +2152,35 @@ function refreshPlannerDeer() {
 }
 
 function buildHuntPlan() {
-  const propertyId = $("plannerProperty")?.value;
-  if (!propertyId) {
-    $("plannerTitle").textContent = "Choose a property to start";
-    $("plannerCallout").textContent = "Select a property before building a hunt plan.";
+  const propertyId = $("plannerProperty")?.value || "";
+  const publicLandId = $("plannerPublicLand")?.value || "";
+  if (!propertyId && !publicLandId) {
+    $("plannerTitle").textContent = "Choose where you want to hunt";
+    $("plannerCallout").textContent = "Choose one of your properties or select public land before building a hunt plan.";
     return;
   }
 
-  const property = (properties || []).find(p => p.id === propertyId);
-  const deerId = $("plannerDeer")?.value;
+  const property = propertyId ? (properties || []).find(p => p.id === propertyId) : null;
+  const publicLand = publicLandId ? (publicLands || []).find(l => l.id === publicLandId) : null;
+  const deerId = propertyId ? ($("plannerDeer")?.value || "") : "";
   const deer = deerId ? (deerProfiles || []).find(d => d.id === deerId) : null;
   const time = $("plannerTime")?.value || "morning";
   const date = $("plannerDate")?.value || "your selected date";
+  const locationName = property?.name || property?.property_name || publicLand?.name || "Hunt location";
   const label = deer ? (deer.nickname || deer.deer_code || "Target buck") : "Any deer";
   const sightings = deer?.sighting_count ?? deer?.sightings_count ?? 0;
   const lastSeen = deer?.last_seen ? new Date(deer.last_seen).toLocaleDateString() : "Not available";
 
-  $("plannerTitle").textContent = `${property?.name || property?.property_name || "Property"} — ${time.replace("-", " ")} hunt`;
-  $("plannerSummary").textContent = deer
-    ? `Plan centered on ${label} using the profile history already stored in DIE.`
-    : "General property hunt using the movement data already stored in DIE.";
-  $("plannerTarget").textContent = label;
-  $("plannerSightings").textContent = String(sightings);
-  $("plannerLastSeen").textContent = lastSeen;
-  $("plannerCallout").textContent = deer
-    ? `For ${date}, review ${label}'s most recent camera locations and choose the stand that best matches the expected ${time} movement. Area Intelligence can be used alongside this plan for map context.`
-    : `For ${date}, use Area Intelligence to review camera activity and place your ${time} sit around the strongest recent movement.`;
+  $("plannerTitle").textContent = `${locationName} — ${time.replace("-", " ")} hunt`;
+  $("plannerSummary").textContent = property
+    ? (deer ? `Plan centered on ${label} using the profile history already stored in DIE.` : "General property hunt using the movement data already stored in DIE.")
+    : `Public-land hunt plan for ${locationName}. Use Area Intelligence for map context and surrounding deer observations.`;
+  $("plannerTarget").textContent = property ? label : "Public-land hunt";
+  $("plannerSightings").textContent = property ? String(sightings) : "—";
+  $("plannerLastSeen").textContent = property ? lastSeen : "—";
+  $("plannerCallout").textContent = property
+    ? (deer
+        ? `For ${date}, review ${label}'s most recent camera locations and choose the stand that best matches the expected ${time} movement. Area Intelligence can be used alongside this plan for map context.`
+        : `For ${date}, use Area Intelligence to review camera activity and place your ${time} sit around the strongest recent movement.`)
+    : `For ${date}, use Area Intelligence to review ${locationName}, nearby deer observations, access points and terrain before your ${time} hunt.`;
 }

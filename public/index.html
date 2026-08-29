@@ -120,8 +120,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
         <button class="app-tab active" data-tab="my-intel" type="button"><span>⌖</span> My Deer Intelligence</button>
         <button class="app-tab" data-tab="upload" type="button"><span>＋</span> Upload Deer</button>
         <button class="app-tab" data-tab="area-intel" type="button"><span>⌖</span> Area Intelligence</button>
-        <button class="app-tab" data-tab="planner" type="button"><span>◎</span> Hunt Planner</button>
-        <button class="app-tab" data-tab="area-intel" type="button"><span>♜</span> Public Land</button>
+        <button class="app-tab" data-tab="planner" type="button"><span>◎</span> Plan a Hunt</button>
         <div class="side-divider"></div>
         <button class="app-tab" data-tab="area-intel" type="button"><span>◇</span> Map</button>
         <button class="side-action" data-action="activity" type="button"><span>⌁</span> Activity</button>
@@ -407,15 +406,15 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
     </section>
 
     <!-- =================================================== -->
-    <!-- TAB: HUNT PLANNER -->
+    <!-- TAB: PLAN A HUNT -->
     <!-- =================================================== -->
 
     <section id="tab-planner" class="tab-panel hidden">
       <div class="dashboard-topbar">
         <div>
           <div class="eyebrow">Operations</div>
-          <h1>Hunt Planner</h1>
-          <p>Turn your property, deer and sighting history into a simple hunt plan.</p>
+          <h1>Plan a Hunt</h1>
+          <p>Plan a hunt on one of your properties or choose Alabama public land.</p>
         </div>
       </div>
 
@@ -423,7 +422,9 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
         <article class="intel-card planner-controls">
           <div class="eyebrow">Build a Hunt</div>
           <h3>Plan Your Sit</h3>
-          <label>Property<select id="plannerProperty"><option value="">Choose property…</option></select></label>
+          <label>My property<select id="plannerProperty"><option value="">Choose one of your properties…</option></select></label>
+          <div class="planner-or">or</div>
+          <label>Public land<select id="plannerPublicLand"><option value="">Choose public land…</option></select></label>
           <label>Target deer<select id="plannerDeer"><option value="">Any deer</option></select></label>
           <div class="form-grid">
             <label>Hunt date<input id="plannerDate" type="date"></label>
@@ -441,7 +442,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
             <div><span>Sightings</span><strong id="plannerSightings">—</strong></div>
             <div><span>Last Seen</span><strong id="plannerLastSeen">—</strong></div>
           </div>
-          <div class="planner-callout" id="plannerCallout">Select a property and target deer, then build the plan.</div>
+          <div class="planner-callout" id="plannerCallout">Choose your property or public land, then build the plan.</div>
         </article>
       </div>
     </section>

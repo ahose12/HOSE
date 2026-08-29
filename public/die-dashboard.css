@@ -72,3 +72,23 @@ input,select,textarea{width:100%;margin-top:6px;padding:11px 12px;border-radius:
 .planner-grid{display:grid;grid-template-columns:minmax(320px,.8fr) minmax(0,1.2fr);gap:18px;align-items:start}.planner-controls,.planner-output{padding:22px}.planner-controls h3,.planner-output h3{font-size:23px}.planner-metrics{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin:22px 0}.planner-metrics>div{padding:18px 12px;border-right:1px solid var(--line)}.planner-metrics>div:last-child{border-right:0}.planner-metrics span{display:block;text-transform:uppercase;letter-spacing:.08em;font-size:9px;color:var(--muted);margin-bottom:6px}.planner-metrics strong{font-size:18px}.planner-callout{border:1px solid #5b3a13;background:#151008;border-radius:10px;padding:16px;color:#e7e3dc;line-height:1.5}
 
 @media(max-width:900px){.planner-grid{grid-template-columns:1fr}.upload-page-card{padding:16px}.upload-page-dropzone{min-height:190px}}
+
+/* ===== Plan a Hunt: property or public land ===== */
+.planner-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 2px 0;
+  color: var(--muted, #8e9891);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.planner-or::before,
+.planner-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(255,255,255,.08);
+}
