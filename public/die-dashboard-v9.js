@@ -1570,9 +1570,9 @@ function initMapSafe() {
 
 const ALABAMA_PARCEL_SERVICES = {
   madison: {
-    label: "Madison County tax parcels",
-    url: "https://services6.arcgis.com/yg1rUzGjBdSxKz2Z/ArcGIS/rest/services/2024_Tax_Parcels/FeatureServer/0",
-    fields: "REID,PPIN,PARCEL_ID,ACRES,ACREAGE"
+    label: "Madison County parcel borders",
+    kind: "tile",
+    url: "https://maps.huntsvilleal.gov/server/rest/services/Tiled/MadisonCountyParcels/MapServer/tile/{z}/{y}/{x}"
   },
   limestone: {
     label: "Limestone County tax parcels",
@@ -1629,6 +1629,32 @@ async function loadTaxParcelsForCurrentView(){
 
   const requestId=++areaParcelRequestId;
   if(status) status.textContent=`Loading ${service.label}…`;
+
+  // Madison County publishes a cached parcel MapServer. Using its tile endpoint
+  // is much more reliable in a browser than querying a FeatureServer directly.
+  if(service.kind === "tile") {
+    areaParcelGroup.clearLayers();
+    if(!map.hasLayer(areaParcelGroup)) areaParcelGroup.addTo(map);
+    const parcelTiles=L.tileLayer(service.url,{
+      minZoom: 12,
+      maxZoom: 22,
+      maxNativeZoom: 23,
+      opacity: .95,
+      attribution: "Madison County, Alabama parcel reference"
+    });
+    parcelTiles.on("tileerror",()=>{
+      if(status) status.textContent="Madison County parcel tiles could not load at this zoom. Zoom in and try again.";
+    });
+    parcelTiles.on("load",()=>{
+      if(requestId===areaParcelRequestId && status) status.textContent="Madison County parcel borders shown. Reference only — not a survey.";
+    });
+    parcelTiles.addTo(areaParcelGroup);
+    if(map.getZoom()<12){
+      map.setZoom(14);
+      if(status) status.textContent="Zooming in to show Madison County parcel borders…";
+    }
+    return;
+  }
 
   const b=map.getBounds();
   const envelope=[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()].join(",");
