@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>HOSE Deer Intelligence</title>
+  <title>DIE — Deer Intelligence Engine</title>
 
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -14,8 +14,8 @@
 <div class="shell">
 
   <header class="hero">
-    <div class="eyebrow">HOSE Deer Intelligence</div>
-    <h1>Search the area. Learn your deer. Hunt smarter.</h1>
+    <div class="brand-lockup"><img src="die-logo.png" alt="DIE logo" class="brand-logo"><div><div class="eyebrow">Deer Intelligence Engine</div><h1>DIE</h1></div></div>
+    <p class="hero-tagline">Search the area. Learn your deer. Hunt smarter.</p>
     <p>
       Private trail-camera intelligence, deer history, hunting conditions,
       stand recommendations, and surrounding area intelligence.
@@ -35,7 +35,7 @@
       </div>
 
       <h2>
-        Sign in to HOSE
+        Sign in to DIE
       </h2>
 
       <p>
@@ -139,7 +139,7 @@
         data-tab="my-intel"
         type="button"
       >
-        🦌 My Deer Intelligence
+        My Deer
       </button>
 
       <button class="app-tab" data-tab="friends" type="button">👥 Friends & Sharing</button>
@@ -149,14 +149,14 @@
         data-tab="area-intel"
         type="button"
       >
-        🗺 Area Deer Intelligence
+        Area Intelligence
       </button>
 
     </nav>
 
 
     <section id="tab-friends" class="tab-panel hidden">
-      <div class="section-heading"><div><div class="eyebrow">Private Hunting Network</div><h2>Friends & Sharing</h2><p>Find HOSE hunters by username and privately share selected properties and stands.</p></div></div>
+      <div class="section-heading"><div><div class="eyebrow">Private Hunting Network</div><h2>Friends & Sharing</h2><p>Find DIE hunters by username and privately share selected properties and stands.</p></div></div>
       <div class="grid two">
         <article class="card"><h3>Find a Friend</h3><label>Username<input id="friendSearch" placeholder="@username"></label><button id="friendSearchBtn" class="primary" type="button">Search</button><div id="friendSearchResults" class="stack"></div></article>
         <article class="card"><h3>Friend Requests</h3><div id="friendRequests" class="stack muted">No pending requests.</div></article>
@@ -170,458 +170,188 @@
     <!-- TAB 1: MY DEER INTELLIGENCE -->
     <!-- =================================================== -->
 
-    <section
-      id="tab-my-intel"
-      class="tab-panel"
-    >
+    <section id="tab-my-intel" class="tab-panel">
 
-      <div class="section-heading">
-
-        <div>
-
-          <div class="eyebrow">
-            My Property Intelligence
+      <section class="profile-browser">
+        <div class="profile-browser-head">
+          <div>
+            <div class="eyebrow">Deer Profiles</div>
+            <h2>Buck Profiles</h2>
           </div>
 
-          <h2>
-            Trail Camera Intelligence
-          </h2>
-
-          <p>
-            Upload trail-camera photos, manage cameras and stands,
-            identify individual deer, and build hunting patterns over time.
-          </p>
-
-        </div>
-
-        <span class="private-pill">
-          Private hunter data
-        </span>
-
-      </div>
-
-
-      <!-- PROPERTY + CAMERA -->
-
-      <div class="trail-grid two">
-
-        <article class="intel-card">
-
-          <div class="eyebrow">
-            Property
-          </div>
-
-          <h3>
-            My Hunting Property
-          </h3>
-
-          <label>
-            Existing property
-
-            <select id="propertySelect">
-              <option value="">
-                Choose property…
-              </option>
-            </select>
-          </label>
-
-          <div class="divider">
-            or add one
-          </div>
-
-          <div class="form-grid">
-
-            <label>
-              Property name
-
-              <input
-                id="propertyName"
-                placeholder="Jackson County Farm"
-              >
-            </label>
-
-            <label>
-              Acreage
-
-              <input
-                id="propertyAcres"
-                type="number"
-                min="0"
-                step=".1"
-                placeholder="120"
-              >
-            </label>
-
-          </div>
-
-          <div class="form-grid">
-
-            <label>
-              County
-
-              <input
-                id="propertyCounty"
-                placeholder="Jackson"
-              >
-            </label>
-
-            <label>
-              State
-
-              <input
-                id="propertyState"
-                value="AL"
-              >
-            </label>
-
-          </div>
-
-          <button
-            id="addPropertyBtn"
-            class="secondary"
-            type="button"
-          >
-            Add Property
-          </button>
-
-          <div
-            id="propertyMessage"
-            class="small muted"
-          ></div>
-
-        </article>
-
-
-        <article class="intel-card">
-
-          <div class="eyebrow">
-            Camera Context
-          </div>
-
-          <h3>
-            Add Camera
-          </h3>
-
-          <div class="form-grid">
-
-            <label>
-              Camera name
-
-              <input
-                id="cameraName"
-                placeholder="North Ridge Cam"
-              >
-            </label>
-
-            <label>
-              Facing
-
-              <select id="cameraFacing">
-                <option>N</option>
-                <option>NE</option>
-                <option>E</option>
-                <option>SE</option>
-                <option>S</option>
-                <option>SW</option>
-                <option>W</option>
-                <option>NW</option>
+          <div class="profile-actions">
+            <label class="compact-field">
+              <span>Sort</span>
+              <select id="profileSort">
+                <option value="recent">Most recent</option>
+                <option value="sightings">Most sightings</option>
+                <option value="score">Biggest score</option>
               </select>
             </label>
-
+            <button id="compareProfilesBtn" class="secondary" type="button">Compare</button>
           </div>
-
-          <label>
-            Primary habitat
-
-            <select id="primaryHabitat">
-              <option>Field / Food Plot</option>
-              <option>Scrape</option>
-              <option>Rub Line</option>
-              <option>Trail / Travel Corridor</option>
-              <option>Ridge</option>
-              <option>Hardwoods</option>
-              <option>Pines</option>
-              <option>Transition / Edge</option>
-              <option>Bedding Area</option>
-              <option>Water Source</option>
-              <option>Creek / Drain</option>
-              <option>Agricultural Field</option>
-              <option>Human / Structural</option>
-              <option>Road / Access</option>
-              <option>Other</option>
-            </select>
-          </label>
-
-          <div class="habitat-options">
-
-            <label>
-              <input type="checkbox" value="Scrape">
-              Scrape
-            </label>
-
-            <label>
-              <input type="checkbox" value="Rub line">
-              Rub line
-            </label>
-
-            <label>
-              <input type="checkbox" value="Heavy trail">
-              Heavy trail
-            </label>
-
-            <label>
-              <input type="checkbox" value="Transition edge">
-              Transition edge
-            </label>
-
-            <label>
-              <input type="checkbox" value="Bedding nearby">
-              Bedding nearby
-            </label>
-
-            <label>
-              <input type="checkbox" value="Water / creek">
-              Water / creek
-            </label>
-
-            <label>
-              <input type="checkbox" value="Food source">
-              Food source
-            </label>
-
-            <label>
-              <input type="checkbox" value="Human / structure">
-              Human / structure
-            </label>
-
-          </div>
-
-          <label>
-            Notes
-
-            <textarea
-              id="cameraNotes"
-              rows="3"
-              placeholder="Trail entering field edge..."
-            ></textarea>
-          </label>
-
-          <button
-            id="addCameraBtn"
-            class="secondary"
-            type="button"
-          >
-            Add Camera
-          </button>
-
-          <div
-            id="cameraMessage"
-            class="small muted"
-          ></div>
-
-        </article>
-
-      </div>
-
-
-      <!-- UPLOAD -->
-
-      <article class="intel-card">
-
-        <div class="eyebrow">
-          Trail Camera Upload
         </div>
 
-        <h3>
-          Upload Photos
-        </h3>
-
-        <div class="form-grid">
-
-          <label>
-            Property
-
-            <select id="uploadProperty">
-              <option value="">
-                Choose property…
-              </option>
-            </select>
-          </label>
-
-          <label>
-            Camera
-
-            <select id="uploadCamera">
-              <option value="">
-                Choose camera…
-              </option>
-            </select>
-          </label>
-
-        </div>
-
-        <div class="dropzone">
-
-          <input
-            id="photoUpload"
-            type="file"
-            accept="image/*"
-            multiple
-          >
-
-          <div class="drop-icon">
-            📷
+        <article id="profileShowcase" class="profile-showcase">
+          <div class="profile-media">
+            <button id="profilePrevBtn" class="profile-arrow profile-arrow-left" type="button" aria-label="Previous deer">‹</button>
+            <div id="profileImageStage" class="profile-image-stage">
+              <div id="profileEmptyState" class="profile-empty-state">
+                <div class="empty-icon">🦌</div>
+                <strong>No deer profiles yet</strong>
+                <span>Upload trail-camera photos and DIE will build profiles as deer are analyzed.</span>
+              </div>
+              <img id="profileHeroImage" class="hidden" alt="Selected deer profile">
+              <div id="profileCounter" class="profile-counter hidden"></div>
+            </div>
+            <button id="profileNextBtn" class="profile-arrow profile-arrow-right" type="button" aria-label="Next deer">›</button>
           </div>
 
-          <strong>
-            Select trail-camera photos
-          </strong>
-
-          <span>
-            Uploads are private and associated with your account.
-          </span>
-
-        </div>
-
-        <div class="upload-summary">
-
-          <span id="uploadCount">
-            0 files selected
-          </span>
-
-          <button
-            id="processUploadBtn"
-            class="primary"
-            type="button"
-          >
-            Upload Photos
-          </button>
-
-        </div>
-
-        <div
-          id="uploadProgress"
-          class="small muted"
-        ></div>
-
-        <div
-          id="photoPreviewSection"
-          class="hidden"
-        >
-
-          <div class="eyebrow">
-            Selected Photos
-          </div>
-
-          <div
-            id="photoPreviewGrid"
-            class="photo-grid"
-          ></div>
-
-        </div>
-
-      </article>
-
-
-      <!-- CAMERAS + DEER -->
-
-      <div class="trail-grid two">
-
-        <article class="intel-card">
-
-          <div class="eyebrow">
-            Camera Network
-          </div>
-
-          <h3>
-            My Cameras
-          </h3>
-
-          <div
-            id="cameraCards"
-            class="stack-list"
-          ></div>
-
-        </article>
-
-
-        <article class="intel-card">
-
-          <div class="eyebrow">
-            Individual Deer
-          </div>
-
-          <h3>
-            My Deer Profiles
-          </h3>
-
-          <div
-            id="deerCards"
-            class="stack-list"
-          ></div>
-
-        </article>
-
-      </div>
-
-
-      <!-- RECENT PHOTOS -->
-
-      <article class="intel-card">
-
-        <div class="card-heading">
-
-          <div>
-
-            <div class="eyebrow">
-              Private Storage
+          <div id="profileDetails" class="profile-details hidden">
+            <div class="profile-title-row">
+              <div>
+                <h3 id="profileName">—</h3>
+                <div id="profileTags" class="profile-tags muted">No tags yet</div>
+              </div>
+              <button id="editCurrentProfileBtn" class="secondary mini" type="button">Edit Profile</button>
             </div>
 
-            <h3>
-              Recent Uploaded Photos
-            </h3>
+            <div class="profile-metrics">
+              <div class="profile-metric">
+                <span>DIE Score</span>
+                <strong id="profileScore">—</strong>
+                <small id="profileScoreRange"></small>
+              </div>
+              <div class="profile-metric">
+                <span>Estimated Age</span>
+                <strong id="profileAge">—</strong>
+                <small>AI estimate</small>
+              </div>
+              <div class="profile-metric">
+                <span>Sightings</span>
+                <strong id="profileSightings">0</strong>
+                <small id="profileLastSeen">No sightings yet</small>
+              </div>
+              <div class="profile-metric">
+                <span>Identity Confidence</span>
+                <strong id="profileConfidence">—</strong>
+                <small>Profile match confidence</small>
+              </div>
+            </div>
+          </div>
+        </article>
 
+        <article id="profileComparePanel" class="compare-panel hidden">
+          <div class="card-heading">
+            <div>
+              <div class="eyebrow">Side by Side</div>
+              <h3>Compare Bucks</h3>
+            </div>
+            <button id="closeCompareBtn" class="secondary mini" type="button">Close</button>
+          </div>
+          <div class="compare-controls">
+            <select id="compareProfileA"></select>
+            <span>vs.</span>
+            <select id="compareProfileB"></select>
+          </div>
+          <div id="compareResults" class="compare-results"></div>
+        </article>
+      </section>
+
+      <details class="workspace-drawer">
+        <summary>
+          <span>
+            <strong>Manage Deer Data</strong>
+            <small>Properties, cameras, uploads and recent photos</small>
+          </span>
+          <span class="drawer-chevron">⌄</span>
+        </summary>
+
+        <div class="workspace-content">
+          <div class="trail-grid two">
+            <article class="intel-card compact-card">
+              <div class="eyebrow">Property</div>
+              <h3>Hunting Property</h3>
+              <label>Existing property
+                <select id="propertySelect"><option value="">Choose property…</option></select>
+              </label>
+              <div class="inline-add-grid">
+                <label>Property name<input id="propertyName" placeholder="Jackson County Farm"></label>
+                <label>Acreage<input id="propertyAcres" type="number" min="0" step=".1" placeholder="120"></label>
+                <label>County<input id="propertyCounty" placeholder="Jackson"></label>
+                <label>State<input id="propertyState" value="AL"></label>
+              </div>
+              <button id="addPropertyBtn" class="secondary" type="button">Add Property</button>
+              <div id="propertyMessage" class="small muted"></div>
+            </article>
+
+            <article class="intel-card compact-card">
+              <div class="eyebrow">Camera</div>
+              <h3>Add Camera</h3>
+              <div class="form-grid">
+                <label>Camera name<input id="cameraName" placeholder="North Ridge Cam"></label>
+                <label>Facing<select id="cameraFacing"><option>N</option><option>NE</option><option>E</option><option>SE</option><option>S</option><option>SW</option><option>W</option><option>NW</option></select></label>
+              </div>
+              <label>Primary habitat
+                <select id="primaryHabitat">
+                  <option>Field / Food Plot</option><option>Scrape</option><option>Rub Line</option><option>Trail / Travel Corridor</option><option>Ridge</option><option>Hardwoods</option><option>Pines</option><option>Transition / Edge</option><option>Bedding Area</option><option>Water Source</option><option>Creek / Drain</option><option>Agricultural Field</option><option>Human / Structural</option><option>Road / Access</option><option>Other</option>
+                </select>
+              </label>
+              <details class="sub-options">
+                <summary>Camera details</summary>
+                <div class="habitat-options">
+                  <label><input type="checkbox" value="Scrape">Scrape</label>
+                  <label><input type="checkbox" value="Rub line">Rub line</label>
+                  <label><input type="checkbox" value="Heavy trail">Heavy trail</label>
+                  <label><input type="checkbox" value="Transition edge">Transition edge</label>
+                  <label><input type="checkbox" value="Bedding nearby">Bedding nearby</label>
+                  <label><input type="checkbox" value="Water / creek">Water / creek</label>
+                  <label><input type="checkbox" value="Food source">Food source</label>
+                  <label><input type="checkbox" value="Human / structure">Human / structure</label>
+                </div>
+                <label>Notes<textarea id="cameraNotes" rows="3" placeholder="Trail entering field edge..."></textarea></label>
+              </details>
+              <button id="addCameraBtn" class="secondary" type="button">Add Camera</button>
+              <div id="cameraMessage" class="small muted"></div>
+            </article>
           </div>
 
-          <button
-            id="refreshPhotosBtn"
-            class="secondary"
-            type="button"
-          >
-            Refresh
-          </button>
+          <article class="intel-card upload-card-clean">
+            <div class="upload-card-head">
+              <div><div class="eyebrow">Trail Camera Upload</div><h3>Upload Photos</h3></div>
+              <div class="upload-selectors">
+                <select id="uploadProperty"><option value="">Choose property…</option></select>
+                <select id="uploadCamera"><option value="">Choose camera…</option></select>
+              </div>
+            </div>
+            <div class="dropzone compact-dropzone">
+              <input id="photoUpload" type="file" accept="image/*" multiple>
+              <div class="drop-icon">＋</div>
+              <strong>Add trail-camera photos</strong>
+              <span>Private to your DIE account</span>
+            </div>
+            <div class="upload-summary"><span id="uploadCount">0 files selected</span><button id="processUploadBtn" class="primary" type="button">Upload & Analyze</button></div>
+            <div id="uploadProgress" class="small muted"></div>
+            <div id="photoPreviewSection" class="hidden"><div class="eyebrow">Selected Photos</div><div id="photoPreviewGrid" class="photo-grid"></div></div>
+          </article>
 
+          <div class="trail-grid two">
+            <article class="intel-card compact-card"><div class="eyebrow">Camera Network</div><h3>My Cameras</h3><div id="cameraCards" class="stack-list"></div></article>
+            <article class="intel-card compact-card"><div class="eyebrow">Profiles</div><h3>All Deer Profiles</h3><div id="deerCards" class="stack-list"></div></article>
+          </div>
+
+          <article class="intel-card compact-card">
+            <div class="card-heading"><div><div class="eyebrow">Private Storage</div><h3>Recent Photos</h3></div><button id="refreshPhotosBtn" class="secondary mini" type="button">Refresh</button></div>
+            <div id="recentPhotos" class="photo-grid"></div>
+          </article>
+
+          <article class="intel-card compact-note">
+            <div class="eyebrow">AI Processing</div>
+            <h3>Deer Analysis</h3>
+            <p>DIE analyzes uploaded photos for deer presence, buck/doe/fawn counts, individual buck matches, antler traits, timestamps and hunting context.</p>
+          </article>
         </div>
-
-        <div
-          id="recentPhotos"
-          class="photo-grid"
-        ></div>
-
-      </article>
-
-
-      <!-- AI -->
-
-      <article class="intel-card">
-
-        <div class="eyebrow">
-          AI Processing
-        </div>
-
-        <h3>
-          Deer Analysis
-        </h3>
-
-        <p>
-          Uploaded photos are stored with
-          <code>processing_status = queued</code>.
-          The AI worker will analyze deer presence, buck/doe/fawn counts,
-          individual buck matches, antler traits, timestamps, weather history,
-          and hunting conditions.
-        </p>
-
-      </article>
+      </details>
 
     </section>
 
@@ -805,8 +535,8 @@
 
 <script src="supabase-config.js"></script>
 
-<div id="usernameGate" class="auth-gate hidden" style="z-index:9999"><article class="auth-card"><div class="eyebrow">Finish Your HOSE Profile</div><h2>Create your username</h2><p>Your username is how friends find you. Your email stays private.</p><label>Username<input id="onboardingUsername" autocomplete="username" placeholder="austinhose"></label><label>Display name<input id="onboardingDisplayName" placeholder="Austin"></label><button id="saveUsernameBtn" class="primary" type="button">Continue to HOSE</button><div id="usernameMessage" class="small muted"></div></article></div>
-<script src="app.js?v=20260828-sharing1"></script>
+<div id="usernameGate" class="auth-gate hidden" style="z-index:9999"><article class="auth-card"><div class="eyebrow">Finish Your DIE Profile</div><h2>Create your username</h2><p>Your username is how friends find you. Your email stays private.</p><label>Username<input id="onboardingUsername" autocomplete="username" placeholder="austinhose"></label><label>Display name<input id="onboardingDisplayName" placeholder="Austin"></label><button id="saveUsernameBtn" class="primary" type="button">Continue to DIE</button><div id="usernameMessage" class="small muted"></div></article></div>
+<script src="app.js?v=20260828-profile2"></script>
 
 </body>
 </html>

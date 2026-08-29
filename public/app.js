@@ -19,6 +19,9 @@ let cameras = [];
 let deerProfiles = [];
 let currentProfile = null;
 let friends = [];
+let profileBrowserIndex = 0;
+let profileBrowserRows = [];
+let profileImageCache = new Map();
 
 
 /* ============================================================
@@ -249,7 +252,7 @@ async function searchFriend() {
   const q=cleanUsername($("friendSearch").value); const out=$("friendSearchResults");
   if (!q) { out.innerHTML="<div class='muted'>Enter a username.</div>"; return; }
   const {data,error}=await sb.from("profiles").select("id,username,display_name").ilike("username", q).neq("id",currentUser.id).limit(10);
-  if(error){out.textContent=error.message;return;} if(!data?.length){out.innerHTML="<div class='muted'>No HOSE user found.</div>";return;}
+  if(error){out.textContent=error.message;return;} if(!data?.length){out.innerHTML="<div class='muted'>No DIE user found.</div>";return;}
   out.innerHTML=data.map(x=>`<div class="share-row"><div><strong>@${esc(x.username)}</strong><div class="small muted">${esc(x.display_name||"")}</div></div><button class="secondary" onclick="sendFriendRequest('${x.id}')">Add Friend</button></div>`).join("");
 }
 async function sendFriendRequest(id){
@@ -297,6 +300,7 @@ async function refreshPrivateData() {
   ]);
 
   renderPrivate();
+  await renderProfileShowcase();
   await loadRecentPhotos();
 }
 
@@ -529,6 +533,7 @@ async function renameDeer(
 
   await loadDeerProfiles();
   renderDeerProfiles();
+  await renderProfileShowcase();
 }
 
 
@@ -753,7 +758,7 @@ async function uploadPhotos() {
         );
 
       console.log(
-        "HOSE AI RESULT",
+        "DIE AI RESULT",
         aiResult
       );
 
@@ -1071,6 +1076,170 @@ function renderCameras() {
     .join("");
 }
 
+
+
+
+/* ============================================================
+   PROFESSIONAL DEER PROFILE BROWSER
+   ============================================================ */
+
+function profileDisplayName(deer) {
+  return deer?.nickname || deer?.deer_code || "Unnamed buck";
+}
+
+function getProfileScore(deer) {
+  const t = deer?.ai_traits || {};
+  const raw = t.hose_score ?? t.estimated_score ?? t.gross_score ?? t.score_estimate ?? t.boone_crockett_score ?? deer?.estimated_score ?? null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+function getProfileScoreRange(deer) {
+  const t = deer?.ai_traits || {};
+  return t.score_range || t.estimated_score_range || deer?.score_range || "";
+}
+
+function sortedProfiles() {
+  const mode = $("profileSort")?.value || "recent";
+  const rows = [...deerProfiles].filter(d => !d.sex || String(d.sex).toLowerCase() === "buck");
+  rows.sort((a,b) => {
+    if (mode === "sightings") return Number(b.sighting_count||0) - Number(a.sighting_count||0);
+    if (mode === "score") return (getProfileScore(b) ?? -1) - (getProfileScore(a) ?? -1);
+    return new Date(b.last_seen || b.created_at || 0) - new Date(a.last_seen || a.created_at || 0);
+  });
+  return rows;
+}
+
+function percentValue(value) {
+  if (value === null || value === undefined || value === "") return "—";
+  let n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  if (n <= 1) n *= 100;
+  return `${Math.round(n)}%`;
+}
+
+function formatProfileDate(value) {
+  if (!value) return "No date recorded";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return `Last seen ${d.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})}`;
+}
+
+async function signedProfilePhoto(deer) {
+  if (!deer?.representative_photo_id) return null;
+  if (profileImageCache.has(deer.representative_photo_id)) return profileImageCache.get(deer.representative_photo_id);
+
+  const { data: photo, error } = await sb
+    .from("trail_photos")
+    .select("id,storage_path")
+    .eq("id", deer.representative_photo_id)
+    .maybeSingle();
+
+  if (error || !photo?.storage_path) return null;
+  const { data: signed, error: signError } = await sb.storage
+    .from("trail-camera-photos")
+    .createSignedUrl(photo.storage_path, 3600);
+
+  if (signError || !signed?.signedUrl) return null;
+  profileImageCache.set(deer.representative_photo_id, signed.signedUrl);
+  return signed.signedUrl;
+}
+
+async function renderProfileShowcase() {
+  if (!$("profileShowcase")) return;
+  profileBrowserRows = sortedProfiles();
+
+  const empty = $("profileEmptyState");
+  const img = $("profileHeroImage");
+  const details = $("profileDetails");
+  const counter = $("profileCounter");
+
+  if (!profileBrowserRows.length) {
+    profileBrowserIndex = 0;
+    empty?.classList.remove("hidden");
+    img?.classList.add("hidden");
+    details?.classList.add("hidden");
+    counter?.classList.add("hidden");
+    populateCompareSelectors();
+    return;
+  }
+
+  profileBrowserIndex = Math.min(profileBrowserIndex, profileBrowserRows.length - 1);
+  const deer = profileBrowserRows[profileBrowserIndex];
+  currentProfile = deer;
+
+  empty?.classList.add("hidden");
+  details?.classList.remove("hidden");
+  counter?.classList.remove("hidden");
+  counter.textContent = `${profileBrowserIndex + 1} of ${profileBrowserRows.length}`;
+
+  $("profileName").textContent = profileDisplayName(deer);
+  const tags = Array.isArray(deer.tags) ? deer.tags : [];
+  $("profileTags").textContent = tags.length ? tags.join(" · ") : "No tags yet";
+
+  const score = getProfileScore(deer);
+  $("profileScore").textContent = score === null ? "—" : `~${score.toFixed(1)}"`;
+  const range = getProfileScoreRange(deer);
+  $("profileScoreRange").textContent = range ? `Range: ${range}` : "Score estimate appears when available";
+  $("profileAge").textContent = deer.estimated_age_class ? `${deer.estimated_age_class} yr` : "—";
+  $("profileSightings").textContent = Number(deer.sighting_count || 0).toLocaleString();
+  $("profileLastSeen").textContent = formatProfileDate(deer.last_seen);
+  $("profileConfidence").textContent = percentValue(deer.identity_confidence);
+
+  img.classList.add("hidden");
+  img.removeAttribute("src");
+  const url = await signedProfilePhoto(deer);
+  if (currentProfile?.id !== deer.id) return;
+  if (url) {
+    img.src = url;
+    img.classList.remove("hidden");
+  } else {
+    empty?.classList.remove("hidden");
+    empty.querySelector("strong").textContent = profileDisplayName(deer);
+    empty.querySelector("span").textContent = "No representative photo is available for this profile yet.";
+  }
+
+  populateCompareSelectors();
+}
+
+function moveProfile(direction) {
+  if (!profileBrowserRows.length) return;
+  profileBrowserIndex = (profileBrowserIndex + direction + profileBrowserRows.length) % profileBrowserRows.length;
+  renderProfileShowcase();
+}
+
+function populateCompareSelectors() {
+  const a = $("compareProfileA"), b = $("compareProfileB");
+  if (!a || !b) return;
+  const options = profileBrowserRows.map((d,i)=>`<option value="${d.id}">${esc(profileDisplayName(d))}</option>`).join("");
+  a.innerHTML = options || '<option value="">No profiles</option>';
+  b.innerHTML = options || '<option value="">No profiles</option>';
+  if (profileBrowserRows.length) {
+    a.value = profileBrowserRows[profileBrowserIndex]?.id || profileBrowserRows[0].id;
+    b.value = profileBrowserRows[Math.min(profileBrowserIndex + 1, profileBrowserRows.length - 1)]?.id || profileBrowserRows[0].id;
+  }
+  renderProfileComparison();
+}
+
+function profileCompareCard(deer) {
+  if (!deer) return '<div class="compare-card muted">Choose a buck</div>';
+  const score = getProfileScore(deer);
+  return `<div class="compare-card">
+    <strong>${esc(profileDisplayName(deer))}</strong>
+    <div><span>DIE score</span><b>${score === null ? "—" : `~${score.toFixed(1)}"`}</b></div>
+    <div><span>Estimated age</span><b>${esc(deer.estimated_age_class || "—")}</b></div>
+    <div><span>Sightings</span><b>${Number(deer.sighting_count||0)}</b></div>
+    <div><span>Confidence</span><b>${percentValue(deer.identity_confidence)}</b></div>
+  </div>`;
+}
+
+function renderProfileComparison() {
+  const out = $("compareResults");
+  if (!out) return;
+  const a = profileBrowserRows.find(d=>d.id === $("compareProfileA")?.value);
+  const b = profileBrowserRows.find(d=>d.id === $("compareProfileB")?.value);
+  out.innerHTML = profileCompareCard(a) + profileCompareCard(b);
+}
 
 function renderDeerProfiles() {
   if (!deerProfiles.length) {
@@ -1834,6 +2003,15 @@ async function init() {
   $("friendSearchBtn")?.addEventListener("click",searchFriend);
   $("shareProperty")?.addEventListener("change",loadShareStands);
   $("shareAccessBtn")?.addEventListener("click",shareAccess);
+
+  $("profilePrevBtn")?.addEventListener("click",()=>moveProfile(-1));
+  $("profileNextBtn")?.addEventListener("click",()=>moveProfile(1));
+  $("profileSort")?.addEventListener("change",()=>{ profileBrowserIndex=0; renderProfileShowcase(); });
+  $("editCurrentProfileBtn")?.addEventListener("click",()=>{ if(currentProfile) renameDeer(currentProfile.id,currentProfile.nickname||""); });
+  $("compareProfilesBtn")?.addEventListener("click",()=>{ $("profileComparePanel")?.classList.remove("hidden"); populateCompareSelectors(); });
+  $("closeCompareBtn")?.addEventListener("click",()=>$("profileComparePanel")?.classList.add("hidden"));
+  $("compareProfileA")?.addEventListener("change",renderProfileComparison);
+  $("compareProfileB")?.addEventListener("change",renderProfileComparison);
 
   if (
     initSupabase()
