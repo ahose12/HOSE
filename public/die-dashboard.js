@@ -975,6 +975,7 @@ function renderPrivate() {
 
 
 function renderPropertySelectors() {
+  setTimeout(() => syncAreaPropertyControls(), 0);
   const options =
     properties.map(
       property =>
@@ -1445,36 +1446,108 @@ async function geocode(query) {
 }
 
 
+let areaSatelliteLayer = null;
+let areaStreetLayer = null;
+let areaAssetGroup = null;
+let areaBoundaryGroup = null;
+let areaSelectedAssetType = null;
+let areaBoundaryMode = false;
+let areaBoundaryPoints = [];
+let areaStands = [];
+
+function areaStoreKey(propertyId) { return `die-area-map-${currentUser?.id || "user"}-${propertyId}`; }
+function getAreaStore(propertyId) {
+  try { return JSON.parse(localStorage.getItem(areaStoreKey(propertyId))) || {assets:[], boundary:[]}; }
+  catch { return {assets:[], boundary:[]}; }
+}
+function saveAreaStore(propertyId, value) { localStorage.setItem(areaStoreKey(propertyId), JSON.stringify(value)); }
+
 function initMapSafe() {
-  if (
-    typeof L === "undefined"
-  ) {
-    return;
-  }
+  if (typeof L === "undefined" || map) return;
+  map = L.map("map", {zoomControl:true}).setView([34.72,-86.65], 15);
+  areaSatelliteLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {maxZoom:20, attribution:"Tiles © Esri"});
+  areaStreetLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:19, attribution:"© OpenStreetMap contributors"});
+  areaSatelliteLayer.addTo(map);
+  layerGroup = L.layerGroup().addTo(map);
+  areaAssetGroup = L.layerGroup().addTo(map);
+  areaBoundaryGroup = L.layerGroup().addTo(map);
+  map.on("click", handleAreaMapClick);
+  setTimeout(()=>map.invalidateSize(),100);
+  syncAreaPropertyControls();
+}
 
-  map =
-    L.map("map")
-      .setView(
-        [
-          32.8,
-          -86.8
-        ],
-        7
-      );
+function assetMeta(type){
+  return ({camera:["📷","#4d91ff"],stand:["♜","#71c837"],feeder:["▾","#ff7900"],scrape:["♨","#ef4444"],foodplot:["♧","#71c837"],water:["◆","#9b6cff"],shootinghouse:["⌂","#22c7c7"],trail:["⌁","#d89a4a"],other:["＋","#aaa"]})[type] || ["＋","#aaa"];
+}
+function areaMarkerIcon(type){ const [icon,color]=assetMeta(type); return L.divIcon({className:"",iconSize:[36,36],iconAnchor:[18,34],html:`<div class="die-map-marker" style="color:${color}"><span>${icon}</span></div>`}); }
 
-  L.tileLayer(
-    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    {
-      maxZoom: 19,
-      attribution:
-        "&copy; OpenStreetMap contributors"
-    }
-  )
-  .addTo(map);
+async function syncAreaPropertyControls(){
+  const sel=$("areaPropertySelect"); if(!sel)return;
+  const current=sel.value;
+  sel.innerHTML='<option value="">Choose property…</option>'+properties.map(p=>`<option value="${p.id}">${esc(p.name||"Property")}</option>`).join("");
+  if(current && properties.some(p=>p.id===current)) sel.value=current; else if(properties.length) sel.value=properties[0].id;
+  await loadAreaProperty();
+}
 
-  layerGroup =
-    L.layerGroup()
-      .addTo(map);
+async function loadAreaProperty(){
+  const propertyId=$("areaPropertySelect")?.value;
+  if(!propertyId){ $("areaPlaceMessage").textContent="Select a property to begin."; renderAreaMap(); return; }
+  const {data}=await sb.from("stands").select("*").eq("user_id",currentUser.id).eq("property_id",propertyId).order("name");
+  areaStands=data||[];
+  renderAreaMap();
+}
+
+function renderAreaMap(){
+  if(!map || !areaAssetGroup || !areaBoundaryGroup)return;
+  areaAssetGroup.clearLayers(); areaBoundaryGroup.clearLayers();
+  const propertyId=$("areaPropertySelect")?.value;
+  const property=properties.find(p=>p.id===propertyId);
+  const store=propertyId?getAreaStore(propertyId):{assets:[],boundary:[]};
+  const assets=[...store.assets];
+  cameras.filter(c=>c.property_id===propertyId).forEach(c=>{ if(c.lat!=null&&c.lon!=null&&!assets.some(a=>a.refId===c.id)) assets.push({id:`camera-${c.id}`,refId:c.id,type:"camera",name:c.name,lat:+c.lat,lon:+c.lon}); });
+  areaStands.forEach(st=>{ if(st.lat!=null&&st.lon!=null&&!assets.some(a=>a.refId===st.id)) assets.push({id:`stand-${st.id}`,refId:st.id,type:"stand",name:st.name,lat:+st.lat,lon:+st.lon}); });
+  assets.forEach(a=>L.marker([a.lat,a.lon],{icon:areaMarkerIcon(a.type)}).bindPopup(`<strong>${esc(a.name||a.type)}</strong><br>${esc(a.type)}`).addTo(areaAssetGroup));
+  if(store.boundary?.length>=3){ L.polygon(store.boundary,{color:"#ff7900",weight:3,fillColor:"#ff7900",fillOpacity:.05}).addTo(areaBoundaryGroup); }
+  const bounds=[]; assets.forEach(a=>bounds.push([a.lat,a.lon])); (store.boundary||[]).forEach(x=>bounds.push(x));
+  if(bounds.length) map.fitBounds(bounds,{padding:[45,45],maxZoom:18});
+  else if(property?.lat!=null && property?.lon!=null) map.setView([+property.lat,+property.lon],17);
+  $("areaCameraCount").textContent=cameras.filter(c=>c.property_id===propertyId).length;
+  $("areaStandCount").textContent=areaStands.length;
+  $("areaFeederCount").textContent=assets.filter(a=>a.type==="feeder").length;
+  $("areaScrapeCount").textContent=assets.filter(a=>a.type==="scrape").length;
+  $("areaOtherCount").textContent=assets.filter(a=>!["camera","stand","feeder","scrape"].includes(a.type)).length;
+  $("areaAssetTitle").textContent=property?.name||"Select a property";
+  $("areaAssetList").innerHTML=assets.length?assets.map(a=>`<span class="area-asset-chip">${assetMeta(a.type)[0]} ${esc(a.name||a.type)}</span>`).join(""):'<span class="muted">No mapped assets yet. Choose an asset type and click the map.</span>';
+  $("areaPlaceMessage").textContent=propertyId?"Choose an asset above, then click the map to place it.":"Select a property to begin.";
+}
+
+async function handleAreaMapClick(e){
+  const propertyId=$("areaPropertySelect")?.value; if(!propertyId)return;
+  const store=getAreaStore(propertyId);
+  if(areaBoundaryMode){ areaBoundaryPoints.push([e.latlng.lat,e.latlng.lng]); areaBoundaryGroup.clearLayers(); if(areaBoundaryPoints.length>1)L.polyline(areaBoundaryPoints,{color:"#ff7900",weight:3,dashArray:"6 6"}).addTo(areaBoundaryGroup); $("areaPlaceMessage").textContent=`Boundary: ${areaBoundaryPoints.length} points. Click Draw Property Boundary again to finish.`; return; }
+  if(!areaSelectedAssetType)return;
+  const type=areaSelectedAssetType;
+  let defaultName=type.charAt(0).toUpperCase()+type.slice(1);
+  if(type==="camera"){ const unplaced=cameras.filter(c=>c.property_id===propertyId&&!store.assets.some(a=>a.refId===c.id)); if(unplaced.length) defaultName=unplaced[0].name; }
+  if(type==="stand"){ const unplaced=areaStands.filter(st=>!store.assets.some(a=>a.refId===st.id)); if(unplaced.length) defaultName=unplaced[0].name; }
+  const name=prompt(`Name this ${type}:`,defaultName); if(name===null)return;
+  let refId=null;
+  if(type==="camera") refId=cameras.find(c=>c.property_id===propertyId&&c.name.toLowerCase()===name.trim().toLowerCase())?.id||null;
+  if(type==="stand") refId=areaStands.find(st=>st.name.toLowerCase()===name.trim().toLowerCase())?.id||null;
+  store.assets.push({id:crypto.randomUUID(),refId,type,name:name.trim()||defaultName,lat:e.latlng.lat,lon:e.latlng.lng}); saveAreaStore(propertyId,store);
+  areaSelectedAssetType=null; document.querySelectorAll("[data-asset-type]").forEach(b=>b.classList.remove("active")); renderAreaMap();
+}
+
+function toggleAreaBoundary(){
+  const propertyId=$("areaPropertySelect")?.value; if(!propertyId){$("areaPlaceMessage").textContent="Choose a property first.";return;}
+  if(!areaBoundaryMode){ areaBoundaryMode=true; areaBoundaryPoints=[]; $("areaBoundaryBtn").classList.add("boundary-help"); $("areaBoundaryBtn").textContent="✓ Finish Boundary"; $("areaPlaceMessage").textContent="Click around the property boundary on the map."; }
+  else { areaBoundaryMode=false; $("areaBoundaryBtn").classList.remove("boundary-help"); $("areaBoundaryBtn").textContent="◇ Draw Property Boundary"; if(areaBoundaryPoints.length>=3){const store=getAreaStore(propertyId);store.boundary=areaBoundaryPoints;saveAreaStore(propertyId,store);} areaBoundaryPoints=[];renderAreaMap(); }
+}
+
+async function areaAddProperty(){
+  const name=prompt("Property name:"); if(!name?.trim())return;
+  const {error}=await sb.from("properties").insert({user_id:currentUser.id,name:name.trim(),state:"AL"});
+  if(error){alert(error.message);return;} await refreshPrivateData(); await syncAreaPropertyControls();
 }
 
 
@@ -1998,6 +2071,16 @@ async function init() {
       "click",
       loadRecentPhotos
     );
+
+  $("areaPropertySelect")?.addEventListener("change", loadAreaProperty);
+  $("areaBoundaryBtn")?.addEventListener("click", toggleAreaBoundary);
+  $("areaAddPropertyBtn")?.addEventListener("click", areaAddProperty);
+  $("areaMyPropertiesBtn")?.addEventListener("click", () => document.querySelector('[data-tab="my-intel"]')?.click());
+  document.querySelectorAll("[data-asset-type]").forEach(btn=>btn.addEventListener("click",()=>{ areaSelectedAssetType=btn.dataset.assetType; document.querySelectorAll("[data-asset-type]").forEach(b=>b.classList.toggle("active",b===btn)); $("areaPlaceMessage").textContent=`Click the map to place a ${btn.dataset.assetType}.`; }));
+  $("areaSatelliteBtn")?.addEventListener("click",()=>{ if(map&&areaSatelliteLayer){map.removeLayer(areaStreetLayer);areaSatelliteLayer.addTo(map);$("areaSatelliteBtn").classList.add("active");$("areaStreetBtn").classList.remove("active");}});
+  $("areaStreetBtn")?.addEventListener("click",()=>{ if(map&&areaStreetLayer){map.removeLayer(areaSatelliteLayer);areaStreetLayer.addTo(map);$("areaStreetBtn").classList.add("active");$("areaSatelliteBtn").classList.remove("active");}});
+  $("areaBoundaryLayer")?.addEventListener("change",e=>{if(!map)return;if(e.target.checked)areaBoundaryGroup.addTo(map);else map.removeLayer(areaBoundaryGroup);});
+  $("areaAssetLayer")?.addEventListener("change",e=>{if(!map)return;if(e.target.checked)areaAssetGroup.addTo(map);else map.removeLayer(areaAssetGroup);});
 
   $("searchBtn")
     .addEventListener(

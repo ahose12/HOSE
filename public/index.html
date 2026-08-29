@@ -122,7 +122,6 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
         <button class="app-tab" data-tab="area-intel" type="button"><span>⌖</span> Area Intelligence</button>
         <button class="app-tab" data-tab="planner" type="button"><span>◎</span> Plan a Hunt</button>
         <div class="side-divider"></div>
-        <button class="app-tab" data-tab="area-intel" type="button"><span>◇</span> Map</button>
         <button class="side-action" data-action="activity" type="button"><span>⌁</span> Activity</button>
         <button class="app-tab" data-tab="friends" type="button"><span>♙</span> Friends</button>
         <button class="app-tab" data-tab="friends" data-scroll="account" type="button"><span>♙</span> Account</button>
@@ -448,167 +447,69 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
     </section>
 
     <!-- =================================================== -->
-    <!-- TAB 2: AREA DEER INTELLIGENCE -->
+    <!-- TAB 2: AREA INTELLIGENCE / PROPERTY MAP -->
     <!-- =================================================== -->
-
-    <section
-      id="tab-area-intel"
-      class="tab-panel hidden"
-    >
-
-      <div class="section-heading">
-
+    <section id="tab-area-intel" class="tab-panel hidden area-property-tab">
+      <div class="area-titlebar">
         <div>
+          <div class="eyebrow">AREA INTELLIGENCE</div>
+          <h2>Manage Your Hunting Property</h2>
+          <p>Add and organize your properties, cameras, stands, feeders, scrapes, and more. Build your intel. Plan your hunt.</p>
+        </div>
+        <div class="area-title-actions">
+          <button id="areaMyPropertiesBtn" class="secondary" type="button">☷ My Properties</button>
+          <button id="areaAddPropertyBtn" class="primary" type="button">＋ Add Property</button>
+        </div>
+      </div>
 
-          <div class="eyebrow">
-            Area Intelligence
+      <div class="area-property-toolbar">
+        <label class="area-property-select"><span>SELECT PROPERTY</span><select id="areaPropertySelect"><option value="">Choose property…</option></select></label>
+        <button id="areaBoundaryBtn" class="secondary" type="button">◇ Draw Property Boundary</button>
+        <div class="area-count"><span>📷 Cameras</span><strong id="areaCameraCount">0</strong></div>
+        <div class="area-count"><span>♜ Stands</span><strong id="areaStandCount">0</strong></div>
+        <div class="area-count"><span>▾ Feeders</span><strong id="areaFeederCount">0</strong></div>
+        <div class="area-count"><span>♨ Scrapes</span><strong id="areaScrapeCount">0</strong></div>
+        <div class="area-count"><span>＋ Other</span><strong id="areaOtherCount">0</strong></div>
+      </div>
+
+      <div class="property-map-shell">
+        <div id="map"></div>
+        <aside class="map-tools-panel">
+          <div class="map-tool-card">
+            <h3>ADD ASSET</h3>
+            <p>Choose an asset type, then click the map to place it.</p>
+            <div class="asset-picker">
+              <button data-asset-type="camera" type="button"><b>📷</b><span>Camera</span></button>
+              <button data-asset-type="stand" type="button"><b>♜</b><span>Stand</span></button>
+              <button data-asset-type="feeder" type="button"><b>▾</b><span>Feeder</span></button>
+              <button data-asset-type="scrape" type="button"><b>♨</b><span>Scrape</span></button>
+              <button data-asset-type="foodplot" type="button"><b>♧</b><span>Food Plot</span></button>
+              <button data-asset-type="water" type="button"><b>◆</b><span>Water</span></button>
+              <button data-asset-type="shootinghouse" type="button"><b>⌂</b><span>Shooting House</span></button>
+              <button data-asset-type="trail" type="button"><b>⌁</b><span>Trail</span></button>
+              <button data-asset-type="other" type="button"><b>＋</b><span>Other</span></button>
+            </div>
+            <div id="areaPlaceMessage" class="small muted">Select a property to begin.</div>
           </div>
-
-          <h2>
-            Real Estate + Public Land Deer Intelligence
-          </h2>
-
-          <p>
-            Search confirmed external deer observations around a private
-            address or Alabama public hunting area.
-          </p>
-
-        </div>
-
+          <div class="map-tool-card">
+            <h3>MAP VIEW</h3>
+            <div class="map-view-buttons"><button id="areaSatelliteBtn" class="active" type="button">Satellite</button><button id="areaStreetBtn" type="button">Map</button></div>
+            <label class="map-check"><input id="areaBoundaryLayer" type="checkbox" checked> Property boundary</label>
+            <label class="map-check"><input id="areaAssetLayer" type="checkbox" checked> Property assets</label>
+          </div>
+        </aside>
       </div>
 
-
-      <section class="panel">
-
-        <div class="searchgrid">
-
-          <label>
-            Address / ZIP / city / coordinates
-
-            <input
-              id="address"
-              placeholder="Scottsboro, AL or 35768"
-            >
-          </label>
-
-          <label>
-            Search radius
-
-            <select id="radius"></select>
-          </label>
-
-          <label>
-            Minimum acreage
-
-            <input
-              id="minAcres"
-              type="number"
-              min="0"
-              step=".25"
-              value="0"
-            >
-          </label>
-
-        </div>
-
-
-        <div class="landgrid">
-
-          <label>
-            Public deer-hunting land
-
-            <select id="publicLand">
-
-              <option value="">
-                Choose public land…
-              </option>
-
-            </select>
-
-          </label>
-
-          <button
-            id="searchBtn"
-            class="primary"
-            type="button"
-          >
-            Search Deer Intel
-          </button>
-
-        </div>
-
-      </section>
-
-
-      <div class="metrics">
-
-        <div class="metric">
-
-          <b id="mObs">
-            0
-          </b>
-
-          <span>
-            outside observations
-          </span>
-
-        </div>
-
-        <div class="metric">
-
-          <b id="mDeer">
-            0
-          </b>
-
-          <span>
-            visible deer
-          </span>
-
-        </div>
-
-        <div class="metric">
-
-          <b id="mProfiles">
-            0
-          </b>
-
-          <span>
-            matched profiles
-          </span>
-
-        </div>
-
-        <div class="metric">
-
-          <b id="mHarvested">
-            0
-          </b>
-
-          <span>
-            harvested / reported
-          </span>
-
-        </div>
-
+      <div class="area-asset-list-panel">
+        <div><div class="eyebrow">PROPERTY ASSETS</div><strong id="areaAssetTitle">Select a property</strong></div>
+        <div id="areaAssetList" class="area-asset-list"><span class="muted">Your cameras, stands, feeders, scrapes and other map points will appear here.</span></div>
       </div>
 
-
-      <div id="map"></div>
-
-
-      <div
-        id="status"
-        class="panel small muted"
-      >
-        Enter an address/ZIP or choose public land.
+      <!-- Legacy hidden elements retained for compatibility with older DIE JS -->
+      <div class="hidden" aria-hidden="true">
+        <input id="address"><select id="radius"></select><input id="minAcres"><select id="publicLand"><option value=""></option></select>
+        <button id="searchBtn" type="button"></button><b id="mObs">0</b><b id="mDeer">0</b><b id="mProfiles">0</b><b id="mHarvested">0</b><div id="status"></div><div id="results"></div>
       </div>
-
-
-      <div
-        id="results"
-        class="results"
-      ></div>
-
     </section>
 
     </div>
