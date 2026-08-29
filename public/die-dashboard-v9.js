@@ -1570,9 +1570,11 @@ function initMapSafe() {
 
 const ALABAMA_PARCEL_SERVICES = {
   madison: {
-    label: "Madison County parcel borders",
-    kind: "tile",
-    url: "https://maps.huntsvilleal.gov/server/rest/services/Tiled/MadisonCountyParcels/MapServer/tile/{z}/{y}/{x}"
+    label: "Madison County tax parcels",
+    type: "tile",
+    url: "https://maps.huntsvilleal.gov/server/rest/services/Tiled/MadisonCountyParcels/MapServer/tile/{z}/{y}/{x}",
+    minZoom: 6,
+    maxZoom: 20
   },
   limestone: {
     label: "Limestone County tax parcels",
@@ -1630,29 +1632,30 @@ async function loadTaxParcelsForCurrentView(){
   const requestId=++areaParcelRequestId;
   if(status) status.textContent=`Loading ${service.label}…`;
 
-  // Madison County publishes a cached parcel MapServer. Using its tile endpoint
-  // is much more reliable in a browser than querying a FeatureServer directly.
-  if(service.kind === "tile") {
-    areaParcelGroup.clearLayers();
-    if(!map.hasLayer(areaParcelGroup)) areaParcelGroup.addTo(map);
-    const parcelTiles=L.tileLayer(service.url,{
-      minZoom: 12,
-      maxZoom: 22,
-      maxNativeZoom: 23,
-      opacity: .95,
-      attribution: "Madison County, Alabama parcel reference"
+  areaParcelGroup.clearLayers();
+  if(!map.hasLayer(areaParcelGroup)) areaParcelGroup.addTo(map);
+
+  // Madison County publishes a cached Web Mercator parcel layer. Loading it as
+  // map tiles avoids browser CORS/GeoJSON failures from direct FeatureServer queries.
+  if(service.type==="tile"){
+    const tile=L.tileLayer(service.url,{
+      minZoom:service.minZoom||0,
+      maxZoom:service.maxZoom||20,
+      maxNativeZoom:service.maxZoom||20,
+      opacity:.9,
+      attribution:"Madison County / City of Huntsville GIS"
     });
-    parcelTiles.on("tileerror",()=>{
-      if(status) status.textContent="Madison County parcel tiles could not load at this zoom. Zoom in and try again.";
+    tile.on("load",()=>{
+      if(requestId!==areaParcelRequestId) return;
+      if(status) status.textContent=`${service.label} shown. Zoom in for individual property lines. Reference only — not a survey.`;
     });
-    parcelTiles.on("load",()=>{
-      if(requestId===areaParcelRequestId && status) status.textContent="Madison County parcel borders shown. Reference only — not a survey.";
+    tile.on("tileerror",(e)=>{
+      console.warn("Parcel tile failed",e);
+      if(requestId!==areaParcelRequestId) return;
+      if(status) status.textContent=`Some ${service.label} tiles could not load. Pan or zoom and DIE will retry automatically.`;
     });
-    parcelTiles.addTo(areaParcelGroup);
-    if(map.getZoom()<12){
-      map.setZoom(14);
-      if(status) status.textContent="Zooming in to show Madison County parcel borders…";
-    }
+    tile.addTo(areaParcelGroup);
+    if(map.getZoom()<14) map.setZoom(14);
     return;
   }
 
@@ -1664,7 +1667,7 @@ async function loadTaxParcelsForCurrentView(){
     geometryType:"esriGeometryEnvelope",
     inSR:"4326",
     spatialRel:"esriSpatialRelIntersects",
-    outFields:service.fields,
+    outFields:service.fields||"*",
     returnGeometry:"true",
     outSR:"4326",
     f:"geojson"
@@ -1675,8 +1678,6 @@ async function loadTaxParcelsForCurrentView(){
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const geo=await res.json();
     if(requestId!==areaParcelRequestId) return;
-    areaParcelGroup.clearLayers();
-    if(!map.hasLayer(areaParcelGroup)) areaParcelGroup.addTo(map);
     const features=Array.isArray(geo?.features)?geo.features:[];
     L.geoJSON(geo,{
       style:{color:"#ffd089",weight:1.25,opacity:.9,fillOpacity:0},
