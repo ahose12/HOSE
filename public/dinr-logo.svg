@@ -1,9 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 120" role="img" aria-labelledby="title desc">
-<title id="title">DINR</title><desc id="desc">DINR Deer Intelligence and Natural Reconnaissance crosshair logo</desc>
-<rect width="420" height="120" rx="18" fill="#0b0e0c"/>
-<g transform="translate(60 60)" fill="none" stroke="#ff7900" stroke-width="5">
-<circle r="34"/><circle r="13"/><path d="M0-52V-27M0 27V52M-52 0H-27M27 0H52"/>
-</g>
-<text x="125" y="69" fill="#ff7900" font-family="Arial,Helvetica,sans-serif" font-size="54" font-weight="900" letter-spacing="5">DINR</text>
-<text x="128" y="91" fill="#d7ddd8" font-family="Arial,Helvetica,sans-serif" font-size="11" font-weight="700" letter-spacing="1.7">DEER INTELLIGENCE &amp; NATURAL RECONNAISSANCE</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 220" role="img" aria-labelledby="title desc">
+  <title id="title">DINR plate crosshair logo</title>
+  <desc id="desc">A dinner plate styled as a crosshair with DINR centered inside.</desc>
+  <circle cx="110" cy="110" r="94" fill="#0a0d0b" stroke="#ff7900" stroke-width="10"/>
+  <circle cx="110" cy="110" r="72" fill="none" stroke="#ff7900" stroke-opacity=".5" stroke-width="4"/>
+  <circle cx="110" cy="110" r="48" fill="#101512" stroke="#f2f2ef" stroke-opacity=".18" stroke-width="2"/>
+  <g stroke="#ff7900" stroke-width="8" stroke-linecap="round">
+    <path d="M110 4v42"/><path d="M110 174v42"/><path d="M4 110h42"/><path d="M174 110h42"/>
+  </g>
+  <g stroke="#ff7900" stroke-width="3" stroke-opacity=".75">
+    <path d="M110 54v18"/><path d="M110 148v18"/><path d="M54 110h18"/><path d="M148 110h18"/>
+  </g>
+  <circle cx="110" cy="110" r="6" fill="#ff7900"/>
+  <text x="110" y="121" text-anchor="middle" fill="#ffffff" font-family="Arial,Helvetica,sans-serif" font-size="33" font-weight="900" letter-spacing="2">DINR</text>
 </svg>

@@ -71,6 +71,12 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
 <style>
+/* DINR v24 visual scale + sharing */
+.brand-lockup{display:flex;align-items:center;gap:22px}.brand-lockup .brand-logo{width:132px!important;height:132px!important;flex:0 0 132px}.brand-lockup h1{font-size:clamp(3.6rem,8vw,6.5rem)!important;line-height:.86!important;letter-spacing:-.045em!important;margin:.08em 0!important}.brand-lockup .eyebrow{font-size:14px!important;letter-spacing:.14em!important;font-weight:800!important}.hero-tagline{font-size:1.35rem!important}
+.sidebar-brand{padding:22px 16px!important}.sidebar-brand img{width:116px!important;height:116px!important;margin:0 auto 10px!important;display:block}.sidebar-brand-name{font-size:34px!important;line-height:1!important;letter-spacing:.04em!important;font-weight:950!important}.sidebar-brand-sub{font-size:12px!important;line-height:1.35!important;max-width:220px;margin:7px auto 0;letter-spacing:.09em!important}.mobile-appbar img{width:58px!important;height:58px!important}.mobile-appbar strong{font-size:29px!important;letter-spacing:.04em!important}
+.social-share-quick{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}.social-share-quick button{border:1px solid rgba(255,121,0,.32);background:rgba(255,121,0,.07);color:#ffd1a2;border-radius:9px;padding:9px 11px;font-weight:800;cursor:pointer}.social-share-quick button:hover{border-color:#ff7900;color:#ff7900}.share-picker-grid{display:grid;gap:9px;max-height:430px;overflow:auto;margin-top:14px}.share-record{width:100%;text-align:left;padding:12px;border-radius:11px;border:1px solid rgba(255,255,255,.09);background:#101411;color:#fff;cursor:pointer}.share-record:hover,.share-record.selected{border-color:#ff7900;background:rgba(255,121,0,.08)}.share-record strong,.share-record small{display:block}.share-record small{color:#8d959d;margin-top:3px}.share-card{margin:12px 0;padding:14px;border:1px solid rgba(255,121,0,.22);background:linear-gradient(135deg,rgba(255,121,0,.09),rgba(255,255,255,.02));border-radius:12px}.share-card-type{font-size:10px;font-weight:900;letter-spacing:.15em;color:#ff7900}.share-card h4{font-size:18px;margin:5px 0 2px}.share-card .share-meta{font-size:12px;color:#9da4ab;display:flex;gap:9px;flex-wrap:wrap}.share-card .share-note{margin-top:9px;font-size:13px;line-height:1.45}.share-modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+@media(max-width:700px){.brand-lockup{gap:14px}.brand-lockup .brand-logo{width:92px!important;height:92px!important;flex-basis:92px}.brand-lockup h1{font-size:3.8rem!important}.sidebar-brand img{width:96px!important;height:96px!important}.sidebar-brand-name{font-size:30px!important}}
+<style>
 .account-friends-form{display:grid;gap:10px}.account-friends-form label{display:grid;gap:6px;font-size:12px;color:var(--muted,#9aa0a6)}.account-friends-form input{width:100%;box-sizing:border-box;background:#101214;border:1px solid #30343a;color:#fff;border-radius:8px;padding:10px 11px}.account-friends-form input[readonly]{opacity:.7}.account-friends-form .primary{width:100%}
 </style>
 </head>
@@ -227,6 +233,10 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
               <select id="socialPostVisibility"><option value="friends">Friends</option><option value="private">Only me</option></select>
               <button id="socialPostBtn" class="primary" type="button">Post</button>
             </div>
+            <div class="social-share-quick">
+              <button id="shareAssetToFeedBtn" type="button">📷 Share Asset</button>
+              <button id="shareHarvestToFeedBtn" type="button">🦌 Share Harvest Record</button>
+            </div>
             <div id="socialPostMessage" class="small muted"></div>
           </div>
         </div>
@@ -273,6 +283,16 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
       <div class="modal-head"><div><div class="eyebrow">FIND HUNTERS</div><h2>Grow Your Hunting Circle</h2><p class="muted">Search by DINR username. Email addresses stay private.</p></div><button id="findHuntersCloseBtn" class="icon-button" type="button">✕</button></div>
       <div class="social-search-row"><input id="friendSearchInput" placeholder="@username"><button id="friendSearchBtn" class="primary" type="button">Search</button></div>
       <div id="friendSearchResults" class="social-search-results"><div class="small muted">Search for a hunter to connect.</div></div>
+    </div>
+  </div>
+
+  <div id="shareIntelModal" class="modal-backdrop hidden" aria-hidden="true">
+    <div class="modal-card social-find-card">
+      <div class="modal-head"><div><div class="eyebrow">SHARE WITH YOUR CIRCLE</div><h2 id="shareIntelTitle">Share DINR Intelligence</h2><p id="shareIntelHelp" class="muted">Choose exactly what you want your friends to see. Nothing is shared automatically.</p></div><button id="shareIntelCloseBtn" class="icon-button" type="button">✕</button></div>
+      <div id="shareIntelList" class="share-picker-grid"><div class="small muted">Loading…</div></div>
+      <label style="display:grid;gap:6px;margin-top:12px">Optional note<textarea id="shareIntelNote" rows="2" maxlength="300" placeholder="Add context for your friends…"></textarea></label>
+      <div class="share-modal-actions"><button id="shareIntelCancelBtn" class="secondary" type="button">Cancel</button><button id="shareIntelPostBtn" class="primary" type="button">Share to Friends Feed</button></div>
+      <div id="shareIntelMessage" class="small muted"></div>
     </div>
   </div>
 </section>

@@ -343,7 +343,9 @@ async function openSharedProperty(propertyId){
    ============================================================ */
 
 
-let socialPosts=[], socialFeedFilter="all";
+let socialPosts=[], socialFeedFilter="all", socialFriendIds=new Set();
+let shareIntelMode=null, shareIntelSelected=null;
+const DINR_SHARE_PREFIX="[[DINR_SHARE]]";
 
 function socialInitial(name){return String(name||"D").replace(/^@/,"").trim().charAt(0).toUpperCase()||"D"}
 function profileName(p){return p?.display_name||p?.username||"DINR Hunter"}
@@ -367,6 +369,7 @@ async function loadSocialTab(){
     let profs=[];
     if(ids.length){const {data}=await sb.from("profiles").select("id,username,display_name,avatar_url").in("id",ids);profs=data||[]}
     const pmap=new Map(profs.map(p=>[p.id,p]));
+    socialFriendIds=new Set(accepted.map(r=>r.requester_id===currentUser.id?r.addressee_id:r.requester_id));
     $("socialFriendCount").textContent=accepted.length; $("socialRequestCount").textContent=pendingIn.length; $("friendRequestBadge").textContent=pendingIn.length;
     $("friendRequestsList").innerHTML=pendingIn.length?pendingIn.map(r=>{const p=pmap.get(r.requester_id)||{id:r.requester_id};return socialPersonHtml(p,`<button class="social-mini-btn" onclick="window.dieFriendRespond('${r.id}','accepted')">Accept</button><button class="social-mini-btn" onclick="window.dieFriendRespond('${r.id}','declined')">×</button>`)}).join(""):'<div class="small muted">No pending requests.</div>';
     $("friendsList").innerHTML=accepted.length?accepted.map(r=>{const other=r.requester_id===currentUser.id?r.addressee_id:r.requester_id;return socialPersonHtml(pmap.get(other)||{id:other})}).join(""):'<div class="small muted">No friends yet.</div>';
@@ -396,6 +399,65 @@ window.dieSendFriend=async(userId)=>{
   if(error){alert(error.message);return;} await searchHunters(); loadSocialTab();
 };
 
+
+function closeShareIntel(){
+  $("shareIntelModal")?.classList.add("hidden");
+  $("shareIntelModal")?.setAttribute("aria-hidden","true");
+  shareIntelMode=null; shareIntelSelected=null;
+  if($("shareIntelNote")) $("shareIntelNote").value="";
+  if($("shareIntelMessage")) $("shareIntelMessage").textContent="";
+}
+function sharePayloadBody(payload,note){
+  return DINR_SHARE_PREFIX+JSON.stringify({...payload,note:note||""});
+}
+function parseSharePayload(body){
+  if(!body||!String(body).startsWith(DINR_SHARE_PREFIX)) return null;
+  try{return JSON.parse(String(body).slice(DINR_SHARE_PREFIX.length));}catch{return null;}
+}
+function renderShareCard(payload){
+  if(!payload)return"";
+  const type=payload.type==="harvest"?"HARVEST RECORD":"SHARED ASSET";
+  const icon=payload.type==="harvest"?"🦌":"📷";
+  const meta=(payload.meta||[]).filter(Boolean).map(x=>`<span>${esc(String(x))}</span>`).join("");
+  return `<div class="share-card"><div class="share-card-type">${icon} ${type}</div><h4>${esc(payload.name||"DINR intelligence")}</h4><div class="share-meta">${meta}</div>${payload.note?`<div class="share-note">${esc(payload.note)}</div>`:""}</div>`;
+}
+async function openShareIntel(mode){
+  if(!currentUser)return;
+  shareIntelMode=mode; shareIntelSelected=null;
+  $("shareIntelTitle").textContent=mode==="harvest"?"Share a Harvest Record":"Share an Asset";
+  $("shareIntelHelp").textContent=mode==="harvest"?"Select a harvest record to intentionally publish to your friends feed.":"Select a camera or mapped asset to intentionally publish to your friends feed.";
+  $("shareIntelList").innerHTML='<div class="small muted">Loading…</div>';
+  $("shareIntelModal").classList.remove("hidden"); $("shareIntelModal").setAttribute("aria-hidden","false");
+  try{
+    if(mode==="harvest"){
+      const {data,error}=await sb.from("harvest_events").select("id,property_id,deer_name,sex,harvested_at,antler_points,score,approach_direction").eq("user_id",currentUser.id).order("harvested_at",{ascending:false});
+      if(error)throw error;
+      const rows=data||[];
+      const pmap=new Map(properties.map(p=>[p.id,p.name||p.property_name||"Property"]));
+      $("shareIntelList").innerHTML=rows.length?rows.map(h=>{const meta=[pmap.get(h.property_id),h.harvested_at?new Date(h.harvested_at).toLocaleDateString():null,h.antler_points!=null?`${h.antler_points} pt`:null,h.score!=null?`${h.score}\"`:null].filter(Boolean);const payload={type:"harvest",id:h.id,name:h.deer_name||`${h.sex||"Deer"} harvest`,meta};return `<button class="share-record" type="button" data-share-payload='${esc(JSON.stringify(payload))}'><strong>🦌 ${esc(payload.name)}</strong><small>${esc(meta.join(" · "))}</small></button>`}).join(""):'<div class="small muted">No harvest records available to share.</div>';
+    }else{
+      const [camsRes,assetsRes]=await Promise.all([
+        sb.from("cameras").select("id,property_id,name,facing,primary_habitat").eq("user_id",currentUser.id).order("name"),
+        sb.from("property_assets").select("id,property_id,asset_type,name").eq("owner_id",currentUser.id).order("created_at",{ascending:false})
+      ]);
+      if(camsRes.error)throw camsRes.error;if(assetsRes.error)throw assetsRes.error;
+      const pmap=new Map(properties.map(p=>[p.id,p.name||p.property_name||"Property"]));
+      const records=[...(camsRes.data||[]).map(c=>({type:"asset",assetType:"camera",id:c.id,name:c.name||"Camera",meta:["Camera",pmap.get(c.property_id),c.facing?`Facing ${c.facing}`:null,c.primary_habitat].filter(Boolean)})),...(assetsRes.data||[]).map(a=>({type:"asset",assetType:a.asset_type||"asset",id:a.id,name:a.name||a.asset_type||"Asset",meta:[a.asset_type||"Asset",pmap.get(a.property_id)].filter(Boolean)}))];
+      $("shareIntelList").innerHTML=records.length?records.map(payload=>`<button class="share-record" type="button" data-share-payload='${esc(JSON.stringify(payload))}'><strong>${payload.assetType==="camera"?"📷":"⌖"} ${esc(payload.name)}</strong><small>${esc(payload.meta.join(" · "))}</small></button>`).join(""):'<div class="small muted">No cameras or mapped assets available to share.</div>';
+    }
+    $("shareIntelList").querySelectorAll("[data-share-payload]").forEach(btn=>btn.addEventListener("click",()=>{document.querySelectorAll("#shareIntelList .share-record").forEach(b=>b.classList.remove("selected"));btn.classList.add("selected");try{shareIntelSelected=JSON.parse(btn.dataset.sharePayload)}catch{shareIntelSelected=null}}));
+  }catch(err){$("shareIntelList").innerHTML=`<div class="small muted">${esc(err?.message||"Could not load shareable intelligence.")}</div>`;}
+}
+async function postSharedIntel(){
+  if(!shareIntelSelected){$("shareIntelMessage").textContent="Choose an item first.";return;}
+  $("shareIntelPostBtn").disabled=true;$("shareIntelMessage").textContent="Sharing…";
+  try{
+    const body=sharePayloadBody(shareIntelSelected,$("shareIntelNote").value.trim());
+    const {error}=await sb.from("social_posts").insert({user_id:currentUser.id,body,photo_path:null,visibility:"friends"});if(error)throw error;
+    closeShareIntel();await loadSocialFeed();
+  }catch(err){$("shareIntelMessage").textContent=err?.message||"Could not share intelligence.";}finally{$("shareIntelPostBtn").disabled=false;}
+}
+
 async function createSocialPost(){
   const body=$("socialPostText").value.trim(), file=$("socialPostPhoto").files?.[0]; if(!body&&!file)return;
   $("socialPostBtn").disabled=true;$("socialPostMessage").textContent="Posting…";
@@ -415,11 +477,12 @@ async function loadSocialFeed(){
   socialPosts=data||[];
   const ids=[...new Set(socialPosts.map(p=>p.user_id))];let profs=[];if(ids.length){const {data}=await sb.from("profiles").select("id,username,display_name").in("id",ids);profs=data||[]}
   const pmap=new Map(profs.map(p=>[p.id,p]));
-  const visible=socialFeedFilter==="mine"?socialPosts.filter(p=>p.user_id===currentUser.id):socialPosts;
+  const circlePosts=socialPosts.filter(p=>p.user_id===currentUser.id||socialFriendIds.has(p.user_id));
+  const visible=socialFeedFilter==="mine"?circlePosts.filter(p=>p.user_id===currentUser.id):circlePosts;
   const rendered=[];
   for(const post of visible){
     let photo="";if(post.photo_path){const {data}=await sb.storage.from("social-posts").createSignedUrl(post.photo_path,3600);photo=data?.signedUrl||""}
-    const p=pmap.get(post.user_id)||{};rendered.push(`<article class="social-post"><div class="social-post-head"><div class="social-avatar">${esc(socialInitial(profileName(p)))}</div><div><div class="social-post-user">${esc(profileName(p))}</div><div class="social-post-meta">${p.username?`@${esc(p.username)} · `:""}${new Date(post.created_at).toLocaleString()}</div></div></div>${post.body?`<div class="social-post-body">${esc(post.body)}</div>`:""}${photo?`<img class="social-post-image" src="${photo}" alt="Hunting circle post">`:""}<div class="social-post-actions"><button type="button">♡ Like</button><button type="button">◌ Comment</button>${post.user_id===currentUser.id?`<button type="button" onclick="window.dieDeletePost('${post.id}')">Delete</button>`:""}</div></article>`);
+    const p=pmap.get(post.user_id)||{};const shared=parseSharePayload(post.body);rendered.push(`<article class="social-post"><div class="social-post-head"><div class="social-avatar">${esc(socialInitial(profileName(p)))}</div><div><div class="social-post-user">${esc(profileName(p))}</div><div class="social-post-meta">${p.username?`@${esc(p.username)} · `:""}${new Date(post.created_at).toLocaleString()}</div></div></div>${shared?renderShareCard(shared):(post.body?`<div class="social-post-body">${esc(post.body)}</div>`:"")}${photo?`<img class="social-post-image" src="${photo}" alt="Hunting circle post">`:""}<div class="social-post-actions"><button type="button">♡ Like</button><button type="button">◌ Comment</button>${post.user_id===currentUser.id?`<button type="button" onclick="window.dieDeletePost('${post.id}')">Delete</button>`:""}</div></article>`);
   }
   $("socialFeed").innerHTML=rendered.length?rendered.join(""):'<div class="empty-state">No posts yet. Share the first update with your hunting circle.</div>';
 }
@@ -3020,6 +3083,11 @@ async function init() {
   $("friendSearchBtn")?.addEventListener("click",searchHunters);
   $("friendSearchInput")?.addEventListener("keydown",e=>{if(e.key==="Enter")searchHunters();});
   $("socialPostBtn")?.addEventListener("click",createSocialPost);
+  $("shareAssetToFeedBtn")?.addEventListener("click",()=>openShareIntel("asset"));
+  $("shareHarvestToFeedBtn")?.addEventListener("click",()=>openShareIntel("harvest"));
+  $("shareIntelCloseBtn")?.addEventListener("click",closeShareIntel);
+  $("shareIntelCancelBtn")?.addEventListener("click",closeShareIntel);
+  $("shareIntelPostBtn")?.addEventListener("click",postSharedIntel);
   document.querySelectorAll("[data-feed-filter]").forEach(btn=>btn.addEventListener("click",()=>{socialFeedFilter=btn.dataset.feedFilter;document.querySelectorAll("[data-feed-filter]").forEach(b=>b.classList.toggle("active",b===btn));loadSocialFeed();}));
 
   $("harvestPhoto")?.addEventListener("change", previewHarvestPhoto);
