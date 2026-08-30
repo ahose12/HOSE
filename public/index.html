@@ -33,6 +33,14 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 .harvest-modal{position:fixed;inset:0;z-index:10050;background:rgba(0,0,0,.76);display:flex;align-items:center;justify-content:center;padding:20px}.harvest-modal.hidden{display:none!important}.harvest-card{width:min(680px,100%);max-height:92vh;overflow:auto;background:#0b0e0c;border:1px solid rgba(255,121,0,.28);border-radius:18px;padding:22px;box-shadow:0 24px 80px rgba(0,0,0,.55)}.harvest-card-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}.harvest-card-head h2{margin:.2rem 0}.harvest-close{width:38px;height:38px;border-radius:10px}.harvest-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-top:16px}.harvest-form-grid .full{grid-column:1/-1}.harvest-form-grid label{margin:0}.harvest-preview{display:flex;gap:14px;align-items:center;padding:12px;border:1px dashed rgba(255,255,255,.12);border-radius:12px}.harvest-preview img{width:82px;height:82px;border-radius:10px;object-fit:cover;background:#151a17}.harvest-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}.harvest-intel-note{margin-top:12px;padding:12px 14px;border:1px solid rgba(255,121,0,.18);background:rgba(255,121,0,.05);border-radius:12px}.harvest-marker-popup img{width:180px;max-height:150px;object-fit:cover;border-radius:8px;margin-top:8px}.harvest-edit-btn{margin-top:9px;width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,121,0,.5);background:rgba(255,121,0,.10);color:#ff7900;font-weight:700;cursor:pointer}.intel-score-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}.intel-score-row span{padding:8px;border:1px solid rgba(255,255,255,.08);border-radius:9px;font-size:12px;text-align:center}@media(max-width:600px){.harvest-form-grid{grid-template-columns:1fr}.harvest-form-grid .full{grid-column:auto}.intel-score-row{grid-template-columns:1fr}}
 
 
+
+.camera-upload-modal-card{width:min(760px,94vw);max-height:90vh;overflow:auto}
+.camera-upload-destination{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
+.camera-upload-destination span{padding:12px 14px;border:1px solid rgba(255,255,255,.10);border-radius:10px;background:rgba(255,255,255,.025);font-size:11px;color:#8f969f;letter-spacing:.08em}
+.camera-upload-destination strong{display:block;margin-top:4px;color:#fff;font-size:14px;letter-spacing:0}
+.camera-popup-actions{display:grid;gap:7px;margin-top:10px}
+.camera-upload-btn{width:100%;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,121,0,.55);background:rgba(255,121,0,.12);color:#ff7900;font-weight:800;cursor:pointer}
+
 </style>
   <link rel="stylesheet" href="die-dashboard-v7.css?v=20260829-001">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -140,7 +148,6 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 
       <nav class="sidebar-nav" aria-label="DIE navigation">
         <button class="app-tab active" data-tab="my-intel" type="button"><span>⌖</span> My Deer Intelligence</button>
-        <button class="app-tab" data-tab="upload" type="button"><span>＋</span> Upload Deer</button>
         <button class="app-tab" data-tab="area-intel" type="button"><span>⌖</span> Area Intelligence</button>
         <button class="app-tab" data-tab="planner" type="button"><span>◎</span> Plan a Hunt</button>
         <button class="app-tab" data-tab="history" type="button"><span>◷</span> History</button>
@@ -195,7 +202,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
         </div>
         <div class="dashboard-top-actions">
           <button class="icon-button" type="button" aria-label="Notifications">♧<span class="notification-dot"></span></button>
-          <button id="addDataTopBtn" class="outline-accent" type="button"><span>＋</span> Add Data</button>
+          <button id="addDataTopBtn" class="outline-accent" type="button"><span>📷</span> Manage Cameras</button>
         </div>
       </div>
 
@@ -226,7 +233,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
               <div id="profileEmptyState" class="profile-empty-state">
                 <div class="empty-icon">🦌</div>
                 <strong>No deer profiles yet</strong>
-                <span>Upload trail-camera photos and DIE will build profiles as deer are analyzed.</span>
+                <span>Add a camera to a property, then upload photos directly to that camera. DIE will build profiles as deer are analyzed.</span>
               </div>
               <img id="profileHeroImage" class="hidden" alt="Selected deer profile">
               <div id="profileCounter" class="profile-counter hidden"></div>
@@ -304,15 +311,14 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
           <div><strong>Manage Deer Data</strong><small>Upload, organize, and manage your data.</small></div>
         </div>
         <div class="manage-tiles">
-          <button class="manage-tile" type="button" data-tab-jump="upload"><span class="tile-icon">▣</span><b>Upload Deer</b><small>Add trail cam photos<br>for analysis</small><i>→</i></button>
           <button class="manage-tile" type="button" data-workspace="property"><span class="tile-icon">▱</span><b>My Properties</b><small>Manage your hunting<br>properties</small><i>→</i></button>
-          <button class="manage-tile" type="button" data-workspace="camera"><span class="tile-icon">▣</span><b>My Cameras</b><small>View and manage<br>your trail cameras</small><i>→</i></button>
+          <button class="manage-tile" type="button" data-tab-jump="area-intel"><span class="tile-icon">📷</span><b>Camera Intelligence</b><small>Place cameras & upload<br>photos by location</small><i>→</i></button>
           <button class="manage-tile" type="button" data-workspace="photos"><span class="tile-icon">▤</span><b>Recent Photos</b><small>Review and analyze<br>recent captures</small><i>→</i></button>
           <button class="manage-tile" type="button" data-workspace="ai"><span class="tile-icon">⌁</span><b>AI Analysis Queue</b><small>Check status of photo<br>processing</small><i>→</i></button>
         </div>
 
         <details id="workspaceDrawer" class="workspace-drawer">
-          <summary><span><strong>Open Data Manager</strong><small>Properties, cameras, uploads, profiles and photos</small></span><span class="drawer-chevron">⌄</span></summary>
+          <summary><span><strong>Open Data Manager</strong><small>Properties, cameras, profiles and camera-bound photos</small></span><span class="drawer-chevron">⌄</span></summary>
           <div class="workspace-content">
           <div class="trail-grid two">
             <article class="intel-card compact-card">
@@ -385,31 +391,35 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 
 
     <!-- =================================================== -->
-    <!-- TAB: UPLOAD DEER -->
+    <!-- CAMERA-BOUND PHOTO UPLOAD -->
     <!-- =================================================== -->
-
-    <section id="tab-upload" class="tab-panel hidden">
-      <div class="dashboard-topbar">
-        <div>
-          <div class="eyebrow">Trail Camera Intake</div>
-          <h1>Upload Deer</h1>
-          <p>Add trail-camera photos and send them directly into DIE analysis.</p>
-        </div>
-      </div>
-
-      <article class="intel-card upload-card-clean upload-page-card">
-        <div class="upload-card-head">
-          <div><div class="eyebrow">Choose Destination</div><h3>Trail Camera Photos</h3><p class="muted">Select the property and camera before adding photos.</p></div>
-          <div class="upload-selectors">
-            <select id="uploadProperty"><option value="">Choose property…</option></select>
-            <select id="uploadCamera"><option value="">Choose camera…</option></select>
+    <div id="cameraUploadModal" class="modal-backdrop hidden" aria-hidden="true">
+      <div class="modal-card camera-upload-modal-card" role="dialog" aria-modal="true" aria-labelledby="cameraUploadTitle">
+        <div class="modal-head">
+          <div>
+            <div class="eyebrow">Camera Intelligence</div>
+            <h2 id="cameraUploadTitle">Upload to Camera</h2>
+            <p id="cameraUploadContext" class="muted">Photos are tied directly to this camera and property.</p>
           </div>
+          <button id="cameraUploadCloseBtn" class="icon-button" type="button" aria-label="Close">✕</button>
         </div>
+
+        <div class="camera-upload-destination">
+          <span>PROPERTY <strong id="cameraUploadPropertyName">—</strong></span>
+          <span>CAMERA <strong id="cameraUploadCameraName">—</strong></span>
+        </div>
+
+        <!-- Kept as hidden selects so the existing upload pipeline remains compatible. -->
+        <div class="hidden" aria-hidden="true">
+          <select id="uploadProperty"><option value="">Choose property…</option></select>
+          <select id="uploadCamera"><option value="">Choose camera…</option></select>
+        </div>
+
         <div class="dropzone upload-page-dropzone">
           <input id="photoUpload" type="file" accept="image/*" multiple>
           <div class="drop-icon">＋</div>
-          <strong>Select trail-camera photos</strong>
-          <span>JPG, PNG or phone images • Multiple photos supported • Private to your DIE account</span>
+          <strong>Select this camera's trail-camera photos</strong>
+          <span>JPG, PNG or phone images • Multiple photos supported • Saved to this camera</span>
         </div>
         <div class="upload-summary">
           <span id="uploadCount">0 files selected</span>
@@ -420,13 +430,11 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
           <div class="eyebrow">Selected Photos</div>
           <div id="photoPreviewGrid" class="photo-grid upload-preview-grid"></div>
         </div>
-      </article>
-
-      <div class="trail-grid two upload-help-grid">
-        <article class="intel-card compact-note"><div class="eyebrow">What DIE Does</div><h3>Automatic Analysis</h3><p>DIE checks deer presence, buck/doe/fawn counts, antler traits, individual buck matches and hunting context after upload.</p></article>
-        <article class="intel-card compact-note"><div class="eyebrow">Best Results</div><h3>Keep Camera Context Accurate</h3><p>Assign each upload to the correct property and camera so movement history and future hunt recommendations stay useful.</p></article>
+        <div class="modal-actions">
+          <button id="cameraUploadCancelBtn" class="secondary" type="button">Close</button>
+        </div>
       </div>
-    </section>
+    </div>
 
     <!-- =================================================== -->
     <!-- TAB: PLAN A HUNT -->
@@ -733,7 +741,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 <script src="supabase-config.js"></script>
 
 <div id="usernameGate" class="auth-gate hidden" style="z-index:9999"><article class="auth-card"><div class="eyebrow">Finish Your DIE Profile</div><h2>Create your username</h2><p>Your username is how friends find you. Your email stays private.</p><label>Username<input id="onboardingUsername" autocomplete="username" placeholder="austinhose"></label><label>Display name<input id="onboardingDisplayName" placeholder="Austin"></label><button id="saveUsernameBtn" class="primary" type="button">Continue to DIE</button><div id="usernameMessage" class="small muted"></div></article></div>
-<script src="die-dashboard-v16.js?v=16"></script>
+<script src="die-dashboard-v17.js?v=17"></script>
 
 </body>
 </html>
