@@ -50,6 +50,18 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 .area-asset-chip.asset-clickable{cursor:pointer;border:1px solid rgba(255,255,255,.09);padding:6px 9px;border-radius:8px}
 .area-asset-chip.asset-clickable:hover{border-color:rgba(255,121,0,.5);color:#ff7900}
 
+
+.social-shell{max-width:1280px;margin:0 auto;padding:4px 0 50px}
+.social-head{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:18px}.social-head h1{margin:4px 0 5px;font-size:32px}
+.social-stats{display:grid;grid-template-columns:repeat(3,minmax(0,180px));gap:10px;margin-bottom:18px}.social-stat{background:#111417;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px 16px;text-align:left;color:#fff;cursor:pointer}.social-stat strong{font-size:22px;color:#ff7900;display:block}.social-stat span{font-size:11px;color:#9299a1;text-transform:uppercase;letter-spacing:.08em}
+.social-layout{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(280px,.75fr);gap:18px}.social-feed,.social-side{min-width:0}
+.social-composer,.social-post,.social-card{background:#101316;border:1px solid rgba(255,255,255,.075);border-radius:14px}.social-composer{padding:15px;display:flex;gap:12px}.social-avatar{width:42px;height:42px;border-radius:50%;background:#ff7900;color:#0b0c0e;display:grid;place-items:center;font-weight:900;flex:0 0 auto}.social-compose-main{flex:1}.social-compose-main textarea{width:100%;resize:vertical;min-height:64px;background:#090b0d;border:1px solid rgba(255,255,255,.09);color:#fff;border-radius:10px;padding:11px}.social-compose-actions{display:flex;align-items:center;gap:9px;margin-top:9px}.social-compose-actions select{margin-left:auto}.social-photo-btn,.text-action{border:0;background:transparent;color:#ff7900;font-weight:800;cursor:pointer}
+.social-feed-tabs{display:flex;gap:6px;margin:15px 0 10px;border-bottom:1px solid rgba(255,255,255,.07)}.social-feed-tabs button{background:none;border:0;color:#8f969f;padding:10px 12px;cursor:pointer;font-weight:800}.social-feed-tabs button.active{color:#ff7900;border-bottom:2px solid #ff7900}
+.social-feed-list{display:grid;gap:12px}.social-post{padding:15px}.social-post-head{display:flex;gap:10px;align-items:center}.social-post-head .social-avatar{width:38px;height:38px}.social-post-user{font-weight:850}.social-post-meta{font-size:11px;color:#858d96}.social-post-body{margin:12px 0;line-height:1.5;white-space:pre-wrap}.social-post-image{width:100%;max-height:520px;object-fit:cover;border-radius:11px;border:1px solid rgba(255,255,255,.06)}.social-post-actions{display:flex;gap:8px;margin-top:10px}.social-post-actions button{background:transparent;border:0;color:#aeb4bb;cursor:pointer;font-weight:750}.social-post-actions button:hover{color:#ff7900}
+.social-side{display:grid;gap:12px;align-content:start}.social-card{padding:14px}.social-card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.social-card-head h3{margin:2px 0}.social-badge{min-width:24px;height:24px;border-radius:20px;background:rgba(255,121,0,.15);color:#ff7900;display:grid;place-items:center;font-weight:900}.social-list{display:grid;gap:8px}.social-person{display:flex;gap:9px;align-items:center;padding:9px;border:1px solid rgba(255,255,255,.06);border-radius:10px;background:#0b0e10}.social-person-main{min-width:0;flex:1}.social-person-main strong,.social-person-main small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.social-person-main small{color:#838b94}.social-person-actions{display:flex;gap:5px}.social-mini-btn{border:1px solid rgba(255,121,0,.35);background:rgba(255,121,0,.08);color:#ff7900;border-radius:7px;padding:6px 8px;cursor:pointer;font-weight:800}
+.social-find-card{width:min(650px,94vw)}.social-search-row{display:grid;grid-template-columns:1fr auto;gap:8px;margin:14px 0}.social-search-results{display:grid;gap:8px;max-height:430px;overflow:auto}
+@media(max-width:900px){.social-layout{grid-template-columns:1fr}.social-stats{grid-template-columns:repeat(3,1fr)}}
+
 </style>
   <link rel="stylesheet" href="die-dashboard-v7.css?v=20260829-001">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -187,16 +199,67 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
       </div>
 
     <section id="tab-friends" class="tab-panel hidden">
-      <div class="section-heading"><div><div class="eyebrow">Private Hunting Network</div><h2>Friends & Sharing</h2><p>Find DIE hunters by username and privately share selected properties and stands.</p></div></div>
-      <div class="grid two">
-        <article class="card"><h3>Find a Friend</h3><label>Username<input id="friendSearch" placeholder="@username"></label><button id="friendSearchBtn" class="primary" type="button">Search</button><div id="friendSearchResults" class="stack"></div></article>
-        <article class="card"><h3>Friend Requests</h3><div id="friendRequests" class="stack muted">No pending requests.</div></article>
-      </div>
-      <article class="card"><h3>My Friends</h3><div id="friendsList" class="stack muted">No friends yet.</div></article>
-      <article class="card"><h3>Shared With Me</h3><p class="muted">Open a shared property to see its mapped assets and camera activity.</p><div id="sharedPropertiesList" class="stack muted">No shared properties yet.</div></article>
-      <article class="card"><h3>Share Hunting Access</h3><p class="muted">Choose a friend and share only the property or stand you want them to see.</p><label>Friend<select id="shareFriend"></select></label><label>Property<select id="shareProperty"></select></label><label>Stand (optional)<select id="shareStand"><option value="">Entire property</option></select></label><button id="shareAccessBtn" class="primary" type="button">Share Access</button><div id="shareMessage" class="small muted"></div></article>
-      <article class="card" id="accountSettingsCard"><h3>Account Settings</h3><label>Username<input id="settingsUsername" placeholder="username"></label><label>Display Name<input id="settingsDisplayName" placeholder="Display name"></label><label>Email<input id="settingsEmail" disabled></label><button id="saveProfileBtn" class="primary" type="button">Save Profile</button><div id="profileMessage" class="small muted"></div></article>
-    </section>
+  <div class="social-shell">
+    <div class="social-head">
+      <div><div class="eyebrow">DIE NETWORK</div><h1>Hunting Circle</h1><p class="muted">Connect with hunters you trust, share deer intelligence, and keep private property data under your control.</p></div>
+      <button id="socialFindBtn" class="primary" type="button">＋ Find Hunters</button>
+    </div>
+
+    <div class="social-stats">
+      <button class="social-stat" data-social-view="friends"><strong id="socialFriendCount">0</strong><span>Friends</span></button>
+      <button class="social-stat" data-social-view="requests"><strong id="socialRequestCount">0</strong><span>Requests</span></button>
+      <button class="social-stat" data-social-view="shared"><strong id="socialSharedCount">0</strong><span>Shared Farms</span></button>
+    </div>
+
+    <div class="social-layout">
+      <main class="social-feed">
+        <div class="social-composer">
+          <div class="social-avatar" id="socialMyAvatar">D</div>
+          <div class="social-compose-main">
+            <textarea id="socialPostText" rows="2" maxlength="700" placeholder="Share an update with your hunting circle…"></textarea>
+            <div class="social-compose-actions">
+              <label class="social-photo-btn">▣ Photo<input id="socialPostPhoto" type="file" accept="image/*" hidden></label>
+              <select id="socialPostVisibility"><option value="friends">Friends</option><option value="private">Only me</option></select>
+              <button id="socialPostBtn" class="primary" type="button">Post</button>
+            </div>
+            <div id="socialPostMessage" class="small muted"></div>
+          </div>
+        </div>
+
+        <div class="social-feed-tabs">
+          <button class="active" data-feed-filter="all" type="button">Circle Feed</button>
+          <button data-feed-filter="mine" type="button">My Posts</button>
+        </div>
+        <div id="socialFeed" class="social-feed-list"><div class="empty-state">Your hunting-circle feed will appear here.</div></div>
+      </main>
+
+      <aside class="social-side">
+        <section class="social-card">
+          <div class="social-card-head"><div><div class="eyebrow">FRIEND REQUESTS</div><h3>Requests</h3></div><span id="friendRequestBadge" class="social-badge">0</span></div>
+          <div id="friendRequestsList" class="social-list"><div class="small muted">No pending requests.</div></div>
+        </section>
+
+        <section class="social-card">
+          <div class="social-card-head"><div><div class="eyebrow">YOUR CIRCLE</div><h3>Friends</h3></div><button id="socialFindSmallBtn" class="text-action" type="button">Find</button></div>
+          <div id="friendsList" class="social-list"><div class="small muted">No friends yet.</div></div>
+        </section>
+
+        <section class="social-card">
+          <div class="social-card-head"><div><div class="eyebrow">SHARED INTELLIGENCE</div><h3>Shared With Me</h3></div></div>
+          <div id="sharedPropertiesList" class="social-list"><div class="small muted">No properties shared with you.</div></div>
+        </section>
+      </aside>
+    </div>
+  </div>
+
+  <div id="findHuntersModal" class="modal-backdrop hidden" aria-hidden="true">
+    <div class="modal-card social-find-card">
+      <div class="modal-head"><div><div class="eyebrow">FIND HUNTERS</div><h2>Grow Your Hunting Circle</h2><p class="muted">Search by DIE username. Email addresses stay private.</p></div><button id="findHuntersCloseBtn" class="icon-button" type="button">✕</button></div>
+      <div class="social-search-row"><input id="friendSearchInput" placeholder="@username"><button id="friendSearchBtn" class="primary" type="button">Search</button></div>
+      <div id="friendSearchResults" class="social-search-results"><div class="small muted">Search for a hunter to connect.</div></div>
+    </div>
+  </div>
+</section>
 
     <!-- =================================================== -->
     <!-- TAB 1: MY DEER INTELLIGENCE -->
@@ -783,7 +846,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 <script src="supabase-config.js"></script>
 
 <div id="usernameGate" class="auth-gate hidden" style="z-index:9999"><article class="auth-card"><div class="eyebrow">Finish Your DIE Profile</div><h2>Create your username</h2><p>Your username is how friends find you. Your email stays private.</p><label>Username<input id="onboardingUsername" autocomplete="username" placeholder="austinhose"></label><label>Display name<input id="onboardingDisplayName" placeholder="Austin"></label><button id="saveUsernameBtn" class="primary" type="button">Continue to DIE</button><div id="usernameMessage" class="small muted"></div></article></div>
-<script src="die-dashboard-v18.js?v=18"></script>
+<script src="die-dashboard-v19.js?v=19"></script>
 
 </body>
 </html>
