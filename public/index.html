@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>DIE — Deer Intelligence Engine</title>
+  <title>DINR — Deer Intelligence & Natural Reconnaissance</title>
 
   <style>
 html,body{margin:0;background:#050706;color:#f5f5f1}
@@ -62,6 +62,10 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 .social-find-card{width:min(650px,94vw)}.social-search-row{display:grid;grid-template-columns:1fr auto;gap:8px;margin:14px 0}.social-search-results{display:grid;gap:8px;max-height:430px;overflow:auto}
 @media(max-width:900px){.social-layout{grid-template-columns:1fr}.social-stats{grid-template-columns:repeat(3,1fr)}}
 
+
+/* DINR v21 */
+.sidebar-brand::after{content:"DINR";display:block;color:#ff7900;font-weight:950;font-size:25px;letter-spacing:.08em;line-height:1;margin-top:8px}
+.sidebar-brand-sub{font-size:10px!important;letter-spacing:.07em!important}
 </style>
   <link rel="stylesheet" href="die-dashboard-v7.css?v=20260829-001">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -72,7 +76,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 <div class="shell">
 
   <header class="hero">
-    <div class="brand-lockup"><img src="die-logo.png" alt="DIE logo" class="brand-logo"><div><div class="eyebrow">Deer Intelligence Engine</div><h1>DIE</h1></div></div>
+    <div class="brand-lockup"><img src="die-logo.png" alt="DIE logo" class="brand-logo"><div><div class="eyebrow">Deer Intelligence & Natural Reconnaissance</div><h1>DINR</h1></div></div>
     <p class="hero-tagline">Search the area. Learn your deer. Hunt smarter.</p>
     <p>
       Private trail-camera intelligence, deer history, hunting conditions,
@@ -163,8 +167,8 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
     <aside class="app-sidebar">
       <div class="sidebar-brand">
         <img src="die-logo.png" alt="DIE logo">
-        <div class="sidebar-brand-name">DIE</div>
-        <div class="sidebar-brand-sub">Deer Intelligence Engine</div>
+        <div class="sidebar-brand-name">DINR</div>
+        <div class="sidebar-brand-sub">Deer Intelligence & Natural Reconnaissance</div>
       </div>
 
       <nav class="sidebar-nav" aria-label="DIE navigation">
@@ -194,14 +198,14 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
     <div class="app-main">
       <div class="mobile-appbar">
         <img src="die-logo.png" alt="DIE">
-        <strong>DIE</strong>
+        <strong>DINR</strong>
         <button class="mobile-menu-button" type="button" aria-label="Menu">☰</button>
       </div>
 
     <section id="tab-friends" class="tab-panel hidden">
   <div class="social-shell">
     <div class="social-head">
-      <div><div class="eyebrow">DIE NETWORK</div><h1>Hunting Circle</h1><p class="muted">Connect with hunters you trust, share deer intelligence, and keep private property data under your control.</p></div>
+      <div><div class="eyebrow">DINR NETWORK</div><h1>Hunting Circle</h1><p class="muted">Connect with hunters you trust, share deer intelligence, and keep private property data under your control.</p></div>
       <button id="socialFindBtn" class="primary" type="button">＋ Find Hunters</button>
     </div>
 
@@ -322,7 +326,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
               <button id="editCurrentProfileBtnLeft" class="secondary mini" type="button">✎&nbsp; Edit Profile</button>
             </div>
             <div class="left-profile-stats">
-              <div><span>DIE Score</span><strong id="profileScoreLeft">—</strong><small id="profileScoreRangeLeft"></small></div>
+              <div><span>DINR Score</span><strong id="profileScoreLeft">—</strong><small id="profileScoreRangeLeft"></small></div>
               <div><span>Estimated Age</span><strong id="profileAgeLeft">—</strong><small>AI estimate</small></div>
               <div><span>Score Confidence</span><strong id="profileConfidenceLeft">—</strong><small>Profile confidence</small></div>
             </div>
@@ -340,7 +344,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 
             <div class="profile-score-zone">
               <div class="profile-score-copy">
-                <span>DIE Score</span>
+                <span>DINR Score</span>
                 <strong id="profileScore">—</strong>
                 <small id="profileScoreRange"></small>
               </div>
@@ -692,7 +696,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
             <div class="history-row"><span>1</span><span>Reported harvest by county + date</span><strong>Game Check</strong></div>
             <div class="history-row"><span>2</span><span>Temperature, wind, pressure + precipitation</span><strong>Weather</strong></div>
             <div class="history-row"><span>3</span><span>Rut timing + public/private context</span><strong>Context</strong></div>
-            <div class="history-row"><span>4</span><span>Compare tomorrow to high-harvest historical days</span><strong>DIE</strong></div>
+            <div class="history-row"><span>4</span><span>Compare tomorrow to high-harvest historical days</span><strong>DINR</strong></div>
           </div>
         </article>
       </div>
@@ -846,7 +850,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 <script src="supabase-config.js"></script>
 
 <div id="usernameGate" class="auth-gate hidden" style="z-index:9999"><article class="auth-card"><div class="eyebrow">Finish Your DIE Profile</div><h2>Create your username</h2><p>Your username is how friends find you. Your email stays private.</p><label>Username<input id="onboardingUsername" autocomplete="username" placeholder="austinhose"></label><label>Display name<input id="onboardingDisplayName" placeholder="Austin"></label><button id="saveUsernameBtn" class="primary" type="button">Continue to DIE</button><div id="usernameMessage" class="small muted"></div></article></div>
-<script src="die-dashboard-v20.js?v=20"></script>
+<script src="dinr-dashboard-v21.js?v=21"></script>
 
 </body>
 </html>

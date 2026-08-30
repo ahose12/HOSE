@@ -1,0 +1,3600 @@
+const $ = id => document.getElementById(id);
+const rad = d => d * Math.PI / 180;
+
+let cfg = {};
+let publicLands = [];
+let observations = [];
+let outsideProfiles = [];
+
+let map = null;
+let layerGroup = null;
+let searchCircle = null;
+let searchMarker = null;
+
+let sb = null;
+let currentUser = null;
+
+let properties = [];
+let cameras = [];
+let deerProfiles = [];
+let currentProfile = null;
+let friends = [];
+let profileBrowserIndex = 0;
+let profileBrowserRows = [];
+let profileImageCache = new Map();
+let sharedProperties = [];
+let areaCameras = [];
+let areaDbAssets = [];
+let areaBoundaryStored = [];
+let areaCameraPhotoCache = new Map();
+let areaHarvests = [];
+let harvestPendingPoint = null;
+let harvestEditingId = null;
+let harvestPhotoUrlCache = new Map();
+
+let plannerHuntType = "private";
+let plannerTargetMode = "any";
+let publicHuntMap = null;
+let publicHuntStreetLayer = null;
+let publicHuntSatelliteLayer = null;
+let publicHuntMarkerGroup = null;
+let publicHuntLandMarker = null;
+
+
+/* ============================================================
+   SUPABASE
+   ============================================================ */
+
+function initSupabase() {
+  const config = window.HOSE_SUPABASE || {};
+
+  if (
+    !config.url ||
+    !config.publishableKey ||
+    config.url.includes("PASTE_") ||
+    config.publishableKey.includes("PASTE_")
+  ) {
+    $("authMessage").textContent =
+      "Supabase is not configured. Update public/supabase-config.js.";
+    return false;
+  }
+
+  sb = window.supabase.createClient(
+    config.url,
+    config.publishableKey,
+    {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    }
+  );
+
+  return true;
+}
+
+
+async function restoreSession() {
+  const { data, error } = await sb.auth.getSession();
+
+  if (error) {
+    $("authMessage").textContent = error.message;
+    return;
+  }
+
+  await applySession(data.session);
+
+  sb.auth.onAuthStateChange(
+    async (_event, session) => {
+      await applySession(session);
+    }
+  );
+}
+
+
+async function applySession(session) {
+  currentUser = session?.user || null;
+
+  $("authGate").classList.toggle(
+    "hidden",
+    !!currentUser
+  );
+
+  $("appShell").classList.toggle(
+    "hidden",
+    !currentUser
+  );
+  document.body.classList.toggle("is-authenticated", !!currentUser);
+
+  if (!currentUser) {
+    $("signedInEmail").textContent = "";
+    clearPrivateUi();
+    return;
+  }
+
+  $("signedInEmail").textContent = currentUser.email || currentUser.id;
+  await loadMyProfile();
+  await refreshPrivateData();
+  await refreshFriendsSharing();
+
+  if (!map) {
+    initMapSafe();
+  }
+}
+
+
+async function signIn() {
+  const email = $("authEmail").value.trim();
+  const password = $("authPassword").value;
+
+  if (!email || !password) {
+    $("authMessage").textContent =
+      "Enter email and password.";
+    return;
+  }
+
+  $("authMessage").textContent =
+    "Signing in…";
+
+  const { error } =
+    await sb.auth.signInWithPassword({
+      email,
+      password
+    });
+
+  $("authMessage").textContent =
+    error ? error.message : "Signed in.";
+}
+
+
+async function signUp() {
+  const email = $("authEmail").value.trim();
+  const password = $("authPassword").value;
+
+  if (!email || !password) {
+    $("authMessage").textContent =
+      "Enter email and password.";
+    return;
+  }
+
+  $("authMessage").textContent =
+    "Creating account…";
+
+  const { data, error } =
+    await sb.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo:
+          window.location.origin +
+          window.location.pathname
+      }
+    });
+
+  if (error) {
+    $("authMessage").textContent =
+      error.message;
+    return;
+  }
+
+  $("authMessage").textContent =
+    data.session
+      ? "Account created and signed in."
+      : "Account created. Check your email to confirm your address, then sign in.";
+}
+
+
+async function signOut() {
+  await sb.auth.signOut();
+}
+
+
+/* ============================================================
+   TABS
+   ============================================================ */
+
+function setupTabs() {
+  document
+    .querySelectorAll(".app-tab")
+    .forEach(button => {
+      button.addEventListener(
+        "click",
+        () => {
+          document
+            .querySelectorAll(".app-tab")
+            .forEach(tab =>
+              tab.classList.remove("active")
+            );
+
+          button.classList.add("active");
+
+          const selected =
+            button.dataset.tab;
+
+          $("tab-my-intel").classList.toggle(
+            "hidden",
+            selected !== "my-intel"
+          );
+
+          $("tab-planner")?.classList.toggle("hidden", selected !== "planner");
+          $("tab-history")?.classList.toggle("hidden", selected !== "history");
+          $("tab-area-intel").classList.toggle("hidden", selected !== "area-intel");
+          $("tab-friends")?.classList.toggle("hidden", selected !== "friends");
+          if(selected==="friends") loadSocialTab();
+          if (selected === "friends") refreshFriendsSharing();
+          if (selected === "planner") refreshPlannerOptions();
+          if (selected === "history") renderHarvestHistory();
+
+          if (selected === "area-intel") {
+            // Leaflet must be initialized after the hidden tab is visible.
+            setTimeout(async () => {
+              initMapSafe();
+              if (map) {
+                map.invalidateSize(true);
+                await syncAreaPropertyControls();
+                renderAreaMap();
+              }
+            }, 120);
+          }
+        }
+      );
+    });
+}
+
+
+/* ============================================================
+   PROFILE + FRIENDS + PRIVATE SHARING
+   ============================================================ */
+function cleanUsername(v) { return (v || "").trim().replace(/^@/, ""); }
+function esc(v) { return String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+async function loadMyProfile() {
+  if (!currentUser) return;
+  let { data, error } = await sb.from("profiles").select("id,username,display_name,avatar_url").eq("id", currentUser.id).maybeSingle();
+  if (error) { console.error("Profile load:", error); return; }
+  if (!data) {
+    const made = await sb.from("profiles").insert({ id: currentUser.id }).select("id,username,display_name,avatar_url").single();
+    if (!made.error) data = made.data;
+  }
+  currentProfile = data || {};
+  $("signedInUsername").textContent = currentProfile.username ? `@${currentProfile.username}` : "Username required";
+  if ($("signedInUsernameSide")) $("signedInUsernameSide").textContent = currentProfile.username ? `@${currentProfile.username}` : "@hunter";
+  if ($("settingsUsername")) $("settingsUsername").value = currentProfile.username || "";
+  if ($("settingsDisplayName")) $("settingsDisplayName").value = currentProfile.display_name || "";
+  if ($("settingsEmail")) $("settingsEmail").value = currentUser.email || "";
+  $("usernameGate")?.classList.toggle("hidden", !!currentProfile.username);
+}
+async function saveProfile(fromOnboarding=false) {
+  const username = cleanUsername($(fromOnboarding ? "onboardingUsername" : "settingsUsername").value);
+  const displayName = $(fromOnboarding ? "onboardingDisplayName" : "settingsDisplayName").value.trim();
+  const msg = $(fromOnboarding ? "usernameMessage" : "profileMessage");
+  if (!/^[A-Za-z0-9_]{3,24}$/.test(username)) { msg.textContent="Use 3–24 letters, numbers, or underscores."; return; }
+  msg.textContent="Saving…";
+  const { error } = await sb.from("profiles").upsert({id:currentUser.id, username, display_name:displayName || null},{onConflict:"id"});
+  if (error) { msg.textContent = error.code === "23505" ? "That username is already taken." : error.message; return; }
+  msg.textContent="Saved."; await loadMyProfile(); await refreshFriendsSharing();
+}
+async function searchFriend() {
+  const q=cleanUsername($("friendSearch").value); const out=$("friendSearchResults");
+  if (!q) { out.innerHTML="<div class='muted'>Enter a username.</div>"; return; }
+  const {data,error}=await sb.from("profiles").select("id,username,display_name").ilike("username", q).neq("id",currentUser.id).limit(10);
+  if(error){out.textContent=error.message;return;} if(!data?.length){out.innerHTML="<div class='muted'>No DIE user found.</div>";return;}
+  out.innerHTML=data.map(x=>`<div class="share-row"><div><strong>@${esc(x.username)}</strong><div class="small muted">${esc(x.display_name||"")}</div></div><button class="secondary" onclick="sendFriendRequest('${x.id}')">Add Friend</button></div>`).join("");
+}
+async function sendFriendRequest(id){
+  const {error}=await sb.from("friendships").insert({requester_id:currentUser.id,addressee_id:id,status:"pending"});
+  $("friendSearchResults").insertAdjacentHTML("afterbegin",`<div class="small ${error?'':'muted'}">${esc(error ? (error.code==='23505'?'Request already exists.':error.message) : 'Friend request sent.')}</div>`); await refreshFriendsSharing();
+}
+async function respondFriend(id,status){ await sb.from("friendships").update({status,updated_at:new Date().toISOString()}).eq("id",id).eq("addressee_id",currentUser.id); await refreshFriendsSharing(); }
+async function refreshFriendsSharing(){
+  if(!currentUser||!$("friendsList"))return;
+  const {data:rels,error}=await sb.from("friendships").select("id,requester_id,addressee_id,status,created_at").or(`requester_id.eq.${currentUser.id},addressee_id.eq.${currentUser.id}`);
+  if(error){$("friendsList").textContent=error.message;return;}
+  const ids=[...new Set((rels||[]).flatMap(r=>[r.requester_id,r.addressee_id]).filter(id=>id!==currentUser.id))];
+  let profiles=[]; if(ids.length){ const r=await sb.from("profiles").select("id,username,display_name").in("id",ids); profiles=r.data||[]; }
+  const byId=Object.fromEntries(profiles.map(p=>[p.id,p]));
+  const accepted=(rels||[]).filter(r=>r.status==="accepted");
+  friends=accepted.map(r=>byId[r.requester_id===currentUser.id?r.addressee_id:r.requester_id]).filter(Boolean);
+  $("friendsList").innerHTML=friends.length?friends.map(f=>`<div class="share-row"><div><strong>@${esc(f.username||'user')}</strong><div class="small muted">${esc(f.display_name||'')}</div></div></div>`).join(''):"No friends yet.";
+  const pending=(rels||[]).filter(r=>r.status==="pending"&&r.addressee_id===currentUser.id);
+  $("friendRequests").innerHTML=pending.length?pending.map(r=>{const f=byId[r.requester_id]||{};return `<div class="share-row"><div><strong>@${esc(f.username||'user')}</strong></div><div><button onclick="respondFriend('${r.id}','accepted')">Accept</button> <button class="secondary" onclick="respondFriend('${r.id}','declined')">Decline</button></div></div>`}).join(''):"No pending requests.";
+  $("shareFriend").innerHTML='<option value="">Choose friend</option>'+friends.map(f=>`<option value="${f.id}">@${esc(f.username)}</option>`).join('');
+  $("shareProperty").innerHTML='<option value="">Choose property</option>'+properties.map(p=>`<option value="${p.id}">${esc(p.name||p.property_name||'Property')}</option>`).join('');
+
+  const {data:shares}=await sb.from("property_shares").select("property_id,owner_id,permission").eq("shared_with_id",currentUser.id);
+  const sharedIds=[...new Set((shares||[]).map(s=>s.property_id).filter(Boolean))];
+  sharedProperties=[];
+  if(sharedIds.length){
+    const r=await sb.from("properties").select("*").in("id",sharedIds);
+    sharedProperties=r.data||[];
+  }
+  if($("sharedPropertiesList")){
+    $("sharedPropertiesList").innerHTML=sharedProperties.length
+      ? sharedProperties.map(p=>`<button class="shared-property-row" type="button" data-open-shared-property="${p.id}"><span><strong>${esc(p.name||"Shared Property")}</strong><small>Open property map, assets & camera photos</small></span><b>Open →</b></button>`).join("")
+      : "No shared properties yet.";
+  }
+}
+async function loadShareStands(){
+  const propertyId=$("shareProperty").value; $("shareStand").innerHTML='<option value="">Entire property</option>'; if(!propertyId)return;
+  const {data}=await sb.from("stands").select("id,name").eq("user_id",currentUser.id).eq("property_id",propertyId).order("name");
+  $("shareStand").innerHTML += (data||[]).map(s=>`<option value="${s.id}">${esc(s.name||'Stand')}</option>`).join('');
+}
+async function shareAccess(){
+  const friend=$("shareFriend").value, property=$("shareProperty").value, stand=$("shareStand").value, msg=$("shareMessage");
+  if(!friend||!property){msg.textContent="Choose a friend and property.";return;}
+  const row=stand?{stand_id:stand,owner_id:currentUser.id,shared_with_id:friend,permission:"viewer"}:{property_id:property,owner_id:currentUser.id,shared_with_id:friend,permission:"viewer"};
+  const {error}=await sb.from(stand?"stand_shares":"property_shares").upsert(row,{onConflict:stand?"stand_id,shared_with_id":"property_id,shared_with_id"});
+  msg.textContent=error?error.message:"Access shared privately.";
+}
+
+
+async function openSharedProperty(propertyId){
+  document.querySelector('.app-tab[data-tab="area-intel"]')?.click();
+  setTimeout(async()=>{
+    await refreshFriendsSharing();
+    await syncAreaPropertyControls(propertyId);
+    if($("areaPropertySelect")) $("areaPropertySelect").value=propertyId;
+    await loadAreaProperty();
+  },220);
+}
+
+/* ============================================================
+   PRIVATE DATA
+   ============================================================ */
+
+
+let socialPosts=[], socialFeedFilter="all";
+
+function socialInitial(name){return String(name||"D").replace(/^@/,"").trim().charAt(0).toUpperCase()||"D"}
+function profileName(p){return p?.display_name||p?.username||"DINR Hunter"}
+function socialPersonHtml(p,actions=""){
+  return `<div class="social-person"><div class="social-avatar">${esc(socialInitial(profileName(p)))}</div><div class="social-person-main"><strong>${esc(profileName(p))}</strong><small>${p?.username?`@${esc(p.username)}`:"DINR hunter"}</small></div>${actions?`<div class="social-person-actions">${actions}</div>`:""}</div>`;
+}
+function openFindHunters(){
+  $("findHuntersModal")?.classList.remove("hidden"); $("findHuntersModal")?.setAttribute("aria-hidden","false"); $("friendSearchInput")?.focus();
+}
+function closeFindHunters(){ $("findHuntersModal")?.classList.add("hidden"); $("findHuntersModal")?.setAttribute("aria-hidden","true"); }
+
+async function loadSocialTab(){
+  if(!currentUser)return;
+  try{
+    const {data:rels,error}=await sb.from("friendships").select("*").or(`requester_id.eq.${currentUser.id},addressee_id.eq.${currentUser.id}`);
+    if(error)throw error;
+    const rows=rels||[];
+    const accepted=rows.filter(r=>r.status==="accepted");
+    const pendingIn=rows.filter(r=>r.status==="pending"&&r.addressee_id===currentUser.id);
+    const ids=[...new Set(rows.flatMap(r=>[r.requester_id,r.addressee_id]).filter(id=>id!==currentUser.id))];
+    let profs=[];
+    if(ids.length){const {data}=await sb.from("profiles").select("id,username,display_name,avatar_url").in("id",ids);profs=data||[]}
+    const pmap=new Map(profs.map(p=>[p.id,p]));
+    $("socialFriendCount").textContent=accepted.length; $("socialRequestCount").textContent=pendingIn.length; $("friendRequestBadge").textContent=pendingIn.length;
+    $("friendRequestsList").innerHTML=pendingIn.length?pendingIn.map(r=>{const p=pmap.get(r.requester_id)||{id:r.requester_id};return socialPersonHtml(p,`<button class="social-mini-btn" onclick="window.dieFriendRespond('${r.id}','accepted')">Accept</button><button class="social-mini-btn" onclick="window.dieFriendRespond('${r.id}','declined')">×</button>`)}).join(""):'<div class="small muted">No pending requests.</div>';
+    $("friendsList").innerHTML=accepted.length?accepted.map(r=>{const other=r.requester_id===currentUser.id?r.addressee_id:r.requester_id;return socialPersonHtml(pmap.get(other)||{id:other})}).join(""):'<div class="small muted">No friends yet.</div>';
+
+    const {data:shares}=await sb.from("property_shares").select("property_id,owner_id,shared_with_user_id,permission").eq("shared_with_user_id",currentUser.id);
+    const shareRows=shares||[]; $("socialSharedCount").textContent=shareRows.length;
+    if(shareRows.length){
+      const pids=[...new Set(shareRows.map(s=>s.property_id))];
+      const {data:props}=await sb.from("properties").select("id,name,county").in("id",pids);
+      $("sharedPropertiesList").innerHTML=(props||[]).map(p=>`<button class="social-person" type="button" onclick="window.dieOpenSharedFarm('${p.id}')"><div class="social-avatar">⌖</div><div class="social-person-main"><strong>${esc(p.name)}</strong><small>${esc(p.county||"Shared property")}</small></div><span class="text-action">Open →</span></button>`).join("");
+    }else $("sharedPropertiesList").innerHTML='<div class="small muted">No properties shared with you.</div>';
+    await loadSocialFeed();
+  }catch(err){console.error("social",err);}
+}
+window.dieFriendRespond=async(id,status)=>{const {error}=await sb.from("friendships").update({status}).eq("id",id);if(error)alert(error.message);else loadSocialTab();};
+window.dieOpenSharedFarm=(id)=>{document.querySelector('.app-tab[data-tab="area-intel"]')?.click();setTimeout(()=>{if($("areaPropertySelect")){$("areaPropertySelect").value=id;$("areaPropertySelect").dispatchEvent(new Event("change"));}},100);};
+
+async function searchHunters(){
+  const q=$("friendSearchInput").value.trim().replace(/^@/,""); if(!q)return;
+  $("friendSearchResults").innerHTML='<div class="small muted">Searching…</div>';
+  const {data,error}=await sb.from("profiles").select("id,username,display_name,avatar_url").ilike("username",`%${q}%`).neq("id",currentUser.id).limit(20);
+  if(error){$("friendSearchResults").innerHTML=`<div class="small muted">${esc(error.message)}</div>`;return;}
+  $("friendSearchResults").innerHTML=(data||[]).length?(data||[]).map(p=>socialPersonHtml(p,`<button class="social-mini-btn" onclick="window.dieSendFriend('${p.id}')">Add</button>`)).join(""):'<div class="small muted">No hunters found.</div>';
+}
+window.dieSendFriend=async(userId)=>{
+  const {error}=await sb.from("friendships").insert({requester_id:currentUser.id,addressee_id:userId,status:"pending"});
+  if(error){alert(error.message);return;} await searchHunters(); loadSocialTab();
+};
+
+async function createSocialPost(){
+  const body=$("socialPostText").value.trim(), file=$("socialPostPhoto").files?.[0]; if(!body&&!file)return;
+  $("socialPostBtn").disabled=true;$("socialPostMessage").textContent="Posting…";
+  try{
+    let photoPath=null;
+    if(file){
+      const ext=(file.name.split(".").pop()||"jpg").toLowerCase();photoPath=`${currentUser.id}/${crypto.randomUUID()}.${ext}`;
+      const {error}=await sb.storage.from("social-posts").upload(photoPath,file,{contentType:file.type||"image/jpeg"});if(error)throw error;
+    }
+    const {error}=await sb.from("social_posts").insert({user_id:currentUser.id,body:body||null,photo_path:photoPath,visibility:$("socialPostVisibility").value});if(error)throw error;
+    $("socialPostText").value="";$("socialPostPhoto").value="";$("socialPostMessage").textContent="Posted to your hunting circle.";await loadSocialFeed();
+  }catch(err){$("socialPostMessage").textContent=err?.message||"Could not post.";}finally{$("socialPostBtn").disabled=false;}
+}
+async function loadSocialFeed(){
+  const {data,error}=await sb.from("social_posts").select("id,user_id,body,photo_path,visibility,created_at").order("created_at",{ascending:false}).limit(100);
+  if(error){$("socialFeed").innerHTML='<div class="empty-state">Run the v19 social SQL to enable the hunting-circle feed.</div>';return;}
+  socialPosts=data||[];
+  const ids=[...new Set(socialPosts.map(p=>p.user_id))];let profs=[];if(ids.length){const {data}=await sb.from("profiles").select("id,username,display_name").in("id",ids);profs=data||[]}
+  const pmap=new Map(profs.map(p=>[p.id,p]));
+  const visible=socialFeedFilter==="mine"?socialPosts.filter(p=>p.user_id===currentUser.id):socialPosts;
+  const rendered=[];
+  for(const post of visible){
+    let photo="";if(post.photo_path){const {data}=await sb.storage.from("social-posts").createSignedUrl(post.photo_path,3600);photo=data?.signedUrl||""}
+    const p=pmap.get(post.user_id)||{};rendered.push(`<article class="social-post"><div class="social-post-head"><div class="social-avatar">${esc(socialInitial(profileName(p)))}</div><div><div class="social-post-user">${esc(profileName(p))}</div><div class="social-post-meta">${p.username?`@${esc(p.username)} · `:""}${new Date(post.created_at).toLocaleString()}</div></div></div>${post.body?`<div class="social-post-body">${esc(post.body)}</div>`:""}${photo?`<img class="social-post-image" src="${photo}" alt="Hunting circle post">`:""}<div class="social-post-actions"><button type="button">♡ Like</button><button type="button">◌ Comment</button>${post.user_id===currentUser.id?`<button type="button" onclick="window.dieDeletePost('${post.id}')">Delete</button>`:""}</div></article>`);
+  }
+  $("socialFeed").innerHTML=rendered.length?rendered.join(""):'<div class="empty-state">No posts yet. Share the first update with your hunting circle.</div>';
+}
+window.dieDeletePost=async(id)=>{if(!confirm("Delete this post?"))return;const {error}=await sb.from("social_posts").delete().eq("id",id).eq("user_id",currentUser.id);if(error)alert(error.message);else loadSocialFeed();};
+
+async function refreshPrivateData() {
+
+  sb.from("deer_profiles")
+    .select("id,sex,estimated_score,score,ai_traits,metadata,representative_photo_id")
+    .eq("user_id",currentUser.id)
+    .then(({data})=>repairVisibleBuckScores(data||[]))
+    .catch(()=>{});
+
+  backfillMissingBuckScores();
+  await Promise.all([
+    loadProperties(),
+    loadCameras(),
+    loadDeerProfiles()
+  ]);
+
+  renderPrivate();
+  await renderProfileShowcase();
+  await loadRecentPhotos();
+}
+
+
+async function loadProperties() {
+  const { data, error } =
+    await sb
+      .from("properties")
+      .select("*")
+      .order("created_at", {
+        ascending: true
+      });
+
+  if (error) {
+    $("propertyMessage").textContent =
+      error.message;
+    return;
+  }
+
+  properties = data || [];
+}
+
+
+async function loadCameras() {
+  const { data, error } =
+    await sb
+      .from("cameras")
+      .select(
+        "*, camera_features(feature_type)"
+      )
+      .eq("active", true)
+      .order("created_at", {
+        ascending: true
+      });
+
+  if (error) {
+    $("cameraMessage").textContent =
+      error.message;
+    return;
+  }
+
+  cameras = data || [];
+}
+
+
+async function loadDeerProfiles() {
+  const { data, error } =
+    await sb
+      .from("deer_profiles")
+      .select("*")
+      .order("last_seen", {
+        ascending: false
+      });
+
+  if (error) {
+    console.error(error);
+    deerProfiles = [];
+    return;
+  }
+
+  deerProfiles = data || [];
+}
+
+
+async function addProperty() {
+  const name =
+    $("propertyName").value.trim();
+
+  if (!name) {
+    $("propertyMessage").textContent =
+      "Property name is required.";
+    return;
+  }
+
+  const { error } =
+    await sb
+      .from("properties")
+      .insert({
+        user_id: currentUser.id,
+        name,
+        county:
+          $("propertyCounty").value.trim()
+          || null,
+        state:
+          $("propertyState").value.trim()
+          || "AL",
+        acreage:
+          $("propertyAcres").value
+            ? Number(
+                $("propertyAcres").value
+              )
+            : null
+      });
+
+  if (error) {
+    $("propertyMessage").textContent =
+      error.message;
+    return;
+  }
+
+  $("propertyMessage").textContent =
+    "Property added.";
+
+  $("propertyName").value = "";
+  $("propertyAcres").value = "";
+  $("propertyCounty").value = "";
+
+  await refreshPrivateData();
+}
+
+
+async function addCamera() {
+  const propertyId =
+    $("propertySelect").value;
+
+  const name =
+    $("cameraName").value.trim();
+
+  if (!propertyId) {
+    $("cameraMessage").textContent =
+      "Choose a property first.";
+    return;
+  }
+
+  if (!name) {
+    $("cameraMessage").textContent =
+      "Camera name is required.";
+    return;
+  }
+
+  const { data, error } =
+    await sb
+      .from("cameras")
+      .insert({
+        user_id: currentUser.id,
+        property_id: propertyId,
+        name,
+        facing:
+          $("cameraFacing").value,
+        primary_habitat:
+          $("primaryHabitat").value,
+        notes:
+          $("cameraNotes").value.trim()
+          || null
+      })
+      .select()
+      .single();
+
+  if (error) {
+    $("cameraMessage").textContent =
+      error.message;
+    return;
+  }
+
+  const features =
+    Array.from(
+      document.querySelectorAll(
+        ".habitat-options input:checked"
+      )
+    )
+    .map(checkbox =>
+      checkbox.value
+    );
+
+  if (features.length) {
+    const featureRows =
+      features.map(feature => ({
+        user_id: currentUser.id,
+        camera_id: data.id,
+        feature_type: feature
+      }));
+
+    const { error: featureError } =
+      await sb
+        .from("camera_features")
+        .insert(featureRows);
+
+    if (featureError) {
+      $("cameraMessage").textContent =
+        "Camera saved, but features failed: "
+        + featureError.message;
+    }
+  }
+
+  $("cameraMessage").textContent =
+    "Camera added.";
+
+  $("cameraName").value = "";
+  $("cameraNotes").value = "";
+
+  document
+    .querySelectorAll(
+      ".habitat-options input"
+    )
+    .forEach(checkbox =>
+      checkbox.checked = false
+    );
+
+  await refreshPrivateData();
+}
+
+
+async function renameDeer(
+  deerId,
+  currentName
+) {
+  const nickname =
+    prompt(
+      "Deer nickname:",
+      currentName || ""
+    );
+
+  if (nickname === null) {
+    return;
+  }
+
+  const { error } =
+    await sb
+      .from("deer_profiles")
+      .update({
+        nickname:
+          nickname.trim() || null
+      })
+      .eq("id", deerId);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  await loadDeerProfiles();
+  renderDeerProfiles();
+  await renderProfileShowcase();
+}
+
+
+/* ============================================================
+   AI PROCESSING
+   ============================================================ */
+
+async function processPhotoWithAI(photoId) {
+  const { data, error } =
+    await sb.functions.invoke(
+      "process-deer-photo",
+      {
+        body: {
+          photo_id: photoId
+        }
+      }
+    );
+
+  if (error) {
+    throw error;
+  }
+
+  if (data?.ok === false) {
+    throw new Error(
+      data.error || "AI processing failed."
+    );
+  }
+
+  return data;
+}
+
+
+/* ============================================================
+   PHOTO UPLOAD
+   ============================================================ */
+
+function closeCameraUploadModal(){
+  $("cameraUploadModal")?.classList.add("hidden");
+  $("cameraUploadModal")?.setAttribute("aria-hidden","true");
+  if($("photoUpload")) $("photoUpload").value="";
+  if($("uploadCount")) $("uploadCount").textContent="0 files selected";
+  if($("uploadProgress")) $("uploadProgress").textContent="";
+  $("photoPreviewSection")?.classList.add("hidden");
+  if($("photoPreviewGrid")) $("photoPreviewGrid").innerHTML="";
+}
+
+function openCameraUploadModal(cameraId){
+  const cam=[...cameras,...areaCameras].find(c=>c.id===cameraId);
+  if(!cam){ alert("Camera could not be found."); return; }
+
+  const ownsProperty=properties.some(p=>p.id===cam.property_id);
+  if(!ownsProperty){ alert("Shared cameras are view-only."); return; }
+
+  const prop=properties.find(p=>p.id===cam.property_id) || areaPropertyUniverse.find(p=>p.id===cam.property_id);
+
+  $("uploadProperty").value=cam.property_id;
+  renderCameraSelectors();
+  $("uploadCamera").value=cam.id;
+
+  $("cameraUploadPropertyName").textContent=prop?.name||"Property";
+  $("cameraUploadCameraName").textContent=cam.name||"Camera";
+  $("cameraUploadTitle").textContent=`Upload to ${cam.name||"Camera"}`;
+  $("cameraUploadContext").textContent="Every photo, AI result, sighting and movement pattern from this upload will stay linked to this exact camera.";
+
+  $("photoUpload").value="";
+  $("uploadCount").textContent="0 files selected";
+  $("uploadProgress").textContent="";
+  $("photoPreviewSection").classList.add("hidden");
+  $("photoPreviewGrid").innerHTML="";
+
+  $("cameraUploadModal").classList.remove("hidden");
+  $("cameraUploadModal").setAttribute("aria-hidden","false");
+}
+window.dieOpenCameraUpload=(cameraId)=>{ try{map?.closePopup();}catch(e){} openCameraUploadModal(cameraId); };
+
+function safeFileName(name) {
+  return name
+    .replace(
+      /[^a-zA-Z0-9._-]+/g,
+      "_"
+    )
+    .replace(
+      /_+/g,
+      "_"
+    )
+    .slice(-120);
+}
+
+
+function renderSelectedPreviews(files) {
+  const section =
+    $("photoPreviewSection");
+
+  const grid =
+    $("photoPreviewGrid");
+
+  grid.innerHTML = "";
+
+  if (!files.length) {
+    section.classList.add("hidden");
+    return;
+  }
+
+  section.classList.remove("hidden");
+
+  Array.from(files)
+    .slice(0, 100)
+    .forEach(file => {
+      const url =
+        URL.createObjectURL(file);
+
+      const card =
+        document.createElement("div");
+
+      card.className =
+        "photo-item";
+
+      card.innerHTML = `
+        <img
+          src="${url}"
+          alt=""
+        >
+
+        <div class="photo-name">
+          ${file.name}
+        </div>
+      `;
+
+      grid.appendChild(card);
+    });
+}
+
+
+async function uploadPhotos() {
+  const propertyId =
+    $("uploadProperty").value;
+
+  const cameraId =
+    $("uploadCamera").value;
+
+  const files =
+    Array.from(
+      $("photoUpload").files
+    );
+
+  if (!propertyId || !cameraId) {
+    $("uploadProgress").textContent =
+      "Open uploads from a camera on your property.";
+    return;
+  }
+
+  if (!files.length) {
+    $("uploadProgress").textContent =
+      "Select photos first.";
+    return;
+  }
+
+  $("processUploadBtn").disabled = true;
+
+  let uploaded = 0;
+  let analyzed = 0;
+  let failed = 0;
+
+  for (
+    let i = 0;
+    i < files.length;
+    i++
+  ) {
+    const file = files[i];
+
+    try {
+      $("uploadProgress").textContent =
+        `Uploading ${i + 1} of ${files.length}: ${file.name}`;
+
+      const fileId =
+        crypto.randomUUID();
+
+      const path =
+        `${currentUser.id}/${propertyId}/${cameraId}/${fileId}-${safeFileName(file.name)}`;
+
+      const {
+        error: uploadError
+      } =
+        await sb.storage
+          .from(
+            "trail-camera-photos"
+          )
+          .upload(
+            path,
+            file,
+            {
+              contentType:
+                file.type
+                || "image/jpeg",
+
+              cacheControl:
+                "3600",
+
+              upsert:
+                false
+            }
+          );
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      uploaded++;
+
+      const {
+        data: photoRow,
+        error: rowError
+      } =
+        await sb
+          .from("trail_photos")
+          .insert({
+            user_id:
+              currentUser.id,
+
+            property_id:
+              propertyId,
+
+            camera_id:
+              cameraId,
+
+            storage_path:
+              path,
+
+            original_filename:
+              file.name,
+
+            captured_at:
+              file.lastModified
+                ? new Date(
+                    file.lastModified
+                  ).toISOString()
+                : null,
+
+            processing_status:
+              "queued"
+          })
+          .select()
+          .single();
+
+      if (rowError) {
+        await sb.storage
+          .from(
+            "trail-camera-photos"
+          )
+          .remove([path]);
+
+        throw rowError;
+      }
+
+      $("uploadProgress").textContent =
+        `Analyzing ${i + 1} of ${files.length}: ${file.name}`;
+
+      const aiResult =
+        await processPhotoWithAI(
+          photoRow.id
+        );
+
+      console.log(
+        "DIE AI RESULT",
+        aiResult
+      );
+
+      analyzed++;
+
+      if (
+        aiResult?.analysis?.deer_present
+      ) {
+        const a =
+          aiResult.analysis;
+
+        $("uploadProgress").textContent =
+          `Analyzed ${file.name}: `
+          +
+          `${a.deer_count} deer, `
+          +
+          `${a.buck_count} bucks, `
+          +
+          `${a.doe_count} does, `
+          +
+          `${a.fawn_count} fawns.`;
+      } else {
+        $("uploadProgress").textContent =
+          `Analyzed ${file.name}: no deer detected.`;
+      }
+
+    } catch (error) {
+      console.error(
+        "Upload / analysis failed:",
+        error
+      );
+
+      failed++;
+
+      $("uploadProgress").textContent =
+        `Problem with ${file.name}: `
+        +
+        (
+          error?.message
+          ||
+          String(error)
+        );
+    }
+  }
+
+  $("processUploadBtn").disabled=false;
+  $("photoUpload").value="";
+  $("uploadCount").textContent="0 files selected";
+  $("photoPreviewSection")?.classList.add("hidden");
+  if($("photoPreviewGrid")) $("photoPreviewGrid").innerHTML="";
+  if($("areaPropertySelect")?.value===propertyId){
+    try{ await loadAreaProperty(); }catch(e){ console.warn(e); }
+  }
+
+  $("photoPreviewGrid").innerHTML =
+    "";
+
+  $("photoPreviewSection")
+    .classList
+    .add("hidden");
+
+  await Promise.all([
+    loadRecentPhotos(),
+    loadDeerProfiles()
+  ]);
+
+  renderDeerProfiles();
+
+  $("uploadProgress").textContent =
+    `Finished. ${uploaded} uploaded, `
+    +
+    `${analyzed} analyzed`
+    +
+    (
+      failed
+        ? `, ${failed} failed.`
+        : "."
+    );
+}
+
+
+async function loadRecentPhotos() {
+  if (!currentUser) {
+    return;
+  }
+
+  let query =
+    sb
+      .from("trail_photos")
+      .select("*")
+      .order(
+        "uploaded_at",
+        {
+          ascending: false
+        }
+      )
+      .limit(24);
+
+  const propertyId =
+    $("uploadProperty").value;
+
+  if (propertyId) {
+    query =
+      query.eq(
+        "property_id",
+        propertyId
+      );
+  }
+
+  const { data, error } =
+    await query;
+
+  if (error) {
+    $("recentPhotos").innerHTML =
+      `<div class="muted">${error.message}</div>`;
+    return;
+  }
+
+  const rows =
+    data || [];
+
+  if (!rows.length) {
+    $("recentPhotos").innerHTML =
+      '<div class="muted">No uploaded photos yet.</div>';
+    return;
+  }
+
+  const cards = [];
+
+  for (const row of rows) {
+    const {
+      data: signed,
+      error: signedError
+    } =
+      await sb.storage
+        .from(
+          "trail-camera-photos"
+        )
+        .createSignedUrl(
+          row.storage_path,
+          3600
+        );
+
+    if (
+      signedError ||
+      !signed?.signedUrl
+    ) {
+      continue;
+    }
+
+    const analysis =
+      row.ai_analysis || null;
+
+    const analysisText =
+      analysis
+        ? `
+          <div class="small">
+            ${
+              analysis.deer_present
+                ? `🦌 ${analysis.deer_count} deer · ♂ ${analysis.buck_count} · ♀ ${analysis.doe_count}`
+                : "No deer detected"
+            }
+          </div>
+        `
+        : "";
+
+    cards.push(`
+      <div class="photo-item">
+
+        <img
+          src="${signed.signedUrl}"
+          alt=""
+        >
+
+        <div class="photo-name">
+          ${
+            row.original_filename
+            || "Trail photo"
+          }
+        </div>
+
+        <div class="small muted">
+          ${row.processing_status}
+        </div>
+
+        ${analysisText}
+
+      </div>
+    `);
+  }
+
+  $("recentPhotos").innerHTML =
+    cards.join("")
+    ||
+    '<div class="muted">No accessible photos.</div>';
+}
+
+
+/* ============================================================
+   PRIVATE UI
+   ============================================================ */
+
+function renderPrivate() {
+  renderPropertySelectors();
+  renderCameraSelectors();
+  renderCameras();
+  renderDeerProfiles();
+}
+
+
+function renderPropertySelectors() {
+  setTimeout(() => syncAreaPropertyControls(), 0);
+  const options =
+    properties.map(
+      property =>
+        `<option value="${property.id}">${property.name}</option>`
+    )
+    .join("");
+
+  $("propertySelect").innerHTML =
+    '<option value="">Choose property…</option>'
+    + options;
+
+  $("uploadProperty").innerHTML =
+    '<option value="">Choose property…</option>'
+    + options;
+
+  if (properties.length === 1) {
+    $("propertySelect").value =
+      properties[0].id;
+
+    $("uploadProperty").value =
+      properties[0].id;
+  }
+}
+
+
+function camerasForProperty(
+  propertyId
+) {
+  if (!propertyId) {
+    return cameras;
+  }
+
+  return cameras.filter(
+    camera =>
+      camera.property_id === propertyId
+  );
+}
+
+
+function renderCameraSelectors() {
+  const rows =
+    camerasForProperty(
+      $("uploadProperty").value
+    );
+
+  $("uploadCamera").innerHTML =
+    '<option value="">Choose camera…</option>'
+    +
+    rows.map(
+      camera =>
+        `<option value="${camera.id}">${camera.name}</option>`
+    )
+    .join("");
+}
+
+
+function renderCameras() {
+  if (!cameras.length) {
+    $("cameraCards").innerHTML =
+      '<div class="muted">No cameras yet.</div>';
+    return;
+  }
+
+  $("cameraCards").innerHTML =
+    cameras.map(camera => {
+      const features =
+        (
+          camera.camera_features
+          || []
+        )
+        .map(
+          feature =>
+            `<span class="meta-chip">${feature.feature_type}</span>`
+        )
+        .join("");
+
+      return `
+        <div class="stack-item">
+
+          <strong>
+            📷 ${camera.name}
+          </strong>
+
+          <div class="small muted">
+            ${
+              camera.primary_habitat
+              || "Habitat not set"
+            }
+
+            ${
+              camera.facing
+                ? ` · Facing ${camera.facing}`
+                : ""
+            }
+          </div>
+
+          <div class="meta-row">
+            ${features}
+          </div>
+
+        </div>
+      `;
+    })
+    .join("");
+}
+
+
+
+
+/* ============================================================
+   PROFESSIONAL DEER PROFILE BROWSER
+   ============================================================ */
+
+function profileDisplayName(deer) {
+  return deer?.nickname || deer?.deer_code || "Unnamed buck";
+}
+
+function getProfileScore(deer) {
+  const t = deer?.ai_traits || {};
+  const raw = t.hose_score ?? t.estimated_score ?? t.gross_score ?? t.score_estimate ?? t.boone_crockett_score ?? deer?.estimated_score ?? null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+function getProfileScoreRange(deer) {
+  const t = deer?.ai_traits || {};
+  return t.score_range || t.estimated_score_range || deer?.score_range || "";
+}
+
+function sortedProfiles() {
+  const mode = $("profileSort")?.value || "recent";
+  const rows = [...deerProfiles].filter(d => !d.sex || String(d.sex).toLowerCase() === "buck");
+  rows.sort((a,b) => {
+    if (mode === "sightings") return Number(b.sighting_count||0) - Number(a.sighting_count||0);
+    if (mode === "score") return (getProfileScore(b) ?? -1) - (getProfileScore(a) ?? -1);
+    return new Date(b.last_seen || b.created_at || 0) - new Date(a.last_seen || a.created_at || 0);
+  });
+  return rows;
+}
+
+function percentValue(value) {
+  if (value === null || value === undefined || value === "") return "—";
+  let n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  if (n <= 1) n *= 100;
+  return `${Math.round(n)}%`;
+}
+
+function formatProfileDate(value) {
+  if (!value) return "No date recorded";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return `Last seen ${d.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})}`;
+}
+
+async function signedProfilePhoto(deer) {
+  if (!deer?.representative_photo_id) return null;
+  if (profileImageCache.has(deer.representative_photo_id)) return profileImageCache.get(deer.representative_photo_id);
+
+  const { data: photo, error } = await sb
+    .from("trail_photos")
+    .select("id,storage_path")
+    .eq("id", deer.representative_photo_id)
+    .maybeSingle();
+
+  if (error || !photo?.storage_path) return null;
+  const { data: signed, error: signError } = await sb.storage
+    .from("trail-camera-photos")
+    .createSignedUrl(photo.storage_path, 3600);
+
+  if (signError || !signed?.signedUrl) return null;
+  profileImageCache.set(deer.representative_photo_id, signed.signedUrl);
+  return signed.signedUrl;
+}
+
+async function renderProfileShowcase() {
+  if (!$("profileShowcase")) return;
+  profileBrowserRows = sortedProfiles();
+
+  const empty = $("profileEmptyState");
+  const img = $("profileHeroImage");
+  const details = $("profileDetails");
+  const counter = $("profileCounter");
+
+  if (!profileBrowserRows.length) {
+    profileBrowserIndex = 0;
+    empty?.classList.remove("hidden");
+    img?.classList.add("hidden");
+    details?.classList.add("hidden");
+    $("profileLeftSummary")?.classList.add("hidden");
+    counter?.classList.add("hidden");
+    populateCompareSelectors();
+    return;
+  }
+
+  profileBrowserIndex = Math.min(profileBrowserIndex, profileBrowserRows.length - 1);
+  const deer = profileBrowserRows[profileBrowserIndex];
+  currentProfile = deer;
+
+  empty?.classList.add("hidden");
+  details?.classList.remove("hidden");
+  counter?.classList.remove("hidden");
+  counter.textContent = `${profileBrowserIndex + 1} of ${profileBrowserRows.length}`;
+
+  $("profileName").textContent = profileDisplayName(deer);
+  const tags = Array.isArray(deer.tags) ? deer.tags : [];
+  $("profileTags").textContent = tags.length ? tags.join(" · ") : "No tags yet";
+
+  const score = getProfileScore(deer);
+  $("profileScore").textContent = score === null ? "—" : `~${score.toFixed(1)}"`;
+  const range = getProfileScoreRange(deer);
+  $("profileScoreRange").textContent = range ? `Range: ${range}` : "Score estimate appears when available";
+  $("profileAge").textContent = deer.estimated_age_class ? `${deer.estimated_age_class} yr` : "—";
+  $("profileSightings").textContent = Number(deer.sighting_count || 0).toLocaleString();
+  $("profileLastSeen").textContent = formatProfileDate(deer.last_seen);
+  $("profileConfidence").textContent = percentValue(deer.identity_confidence);
+  if ($("profileNameLeft")) $("profileNameLeft").textContent = profileDisplayName(deer);
+  if ($("profileTagsLeft")) $("profileTagsLeft").textContent = tags.length ? tags.join(" · ") : "No tags yet";
+  if ($("profileScoreLeft")) $("profileScoreLeft").textContent = score === null ? "—" : `~${score.toFixed(1)}"`;
+  if ($("profileScoreRangeLeft")) $("profileScoreRangeLeft").textContent = range ? `Range: ${range}` : "Score estimate appears when available";
+  if ($("profileAgeLeft")) $("profileAgeLeft").textContent = deer.estimated_age_class ? `${deer.estimated_age_class} yr` : "—";
+  if ($("profileConfidenceLeft")) $("profileConfidenceLeft").textContent = percentValue(deer.identity_confidence);
+  $("profileLeftSummary")?.classList.remove("hidden");
+  const ring = $("profileConfidenceRing");
+  if (ring) {
+    const raw = Number(deer.identity_confidence);
+    const pct = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw <= 1 ? raw * 100 : raw)) : 0;
+    ring.style.setProperty("--confidence", `${pct * 3.6}deg`);
+  }
+
+  img.classList.add("hidden");
+  img.removeAttribute("src");
+  const url = await signedProfilePhoto(deer);
+  if (currentProfile?.id !== deer.id) return;
+  if (url) {
+    img.src = url;
+    img.classList.remove("hidden");
+  } else {
+    empty?.classList.remove("hidden");
+    empty.querySelector("strong").textContent = profileDisplayName(deer);
+    empty.querySelector("span").textContent = "No representative photo is available for this profile yet.";
+  }
+
+  populateCompareSelectors();
+}
+
+function moveProfile(direction) {
+  if (!profileBrowserRows.length) return;
+  profileBrowserIndex = (profileBrowserIndex + direction + profileBrowserRows.length) % profileBrowserRows.length;
+  renderProfileShowcase();
+}
+
+function populateCompareSelectors() {
+  const a = $("compareProfileA"), b = $("compareProfileB");
+  if (!a || !b) return;
+  const options = profileBrowserRows.map((d,i)=>`<option value="${d.id}">${esc(profileDisplayName(d))}</option>`).join("");
+  a.innerHTML = options || '<option value="">No profiles</option>';
+  b.innerHTML = options || '<option value="">No profiles</option>';
+  if (profileBrowserRows.length) {
+    a.value = profileBrowserRows[profileBrowserIndex]?.id || profileBrowserRows[0].id;
+    b.value = profileBrowserRows[Math.min(profileBrowserIndex + 1, profileBrowserRows.length - 1)]?.id || profileBrowserRows[0].id;
+  }
+  renderProfileComparison();
+}
+
+function profileCompareCard(deer) {
+  if (!deer) return '<div class="compare-card muted">Choose a buck</div>';
+  const score = getProfileScore(deer);
+  return `<div class="compare-card">
+    <strong>${esc(profileDisplayName(deer))}</strong>
+    <div><span>DIE score</span><b>${score === null ? "—" : `~${score.toFixed(1)}"`}</b></div>
+    <div><span>Estimated age</span><b>${esc(deer.estimated_age_class || "—")}</b></div>
+    <div><span>Sightings</span><b>${Number(deer.sighting_count||0)}</b></div>
+    <div><span>Confidence</span><b>${percentValue(deer.identity_confidence)}</b></div>
+  </div>`;
+}
+
+function renderProfileComparison() {
+  const out = $("compareResults");
+  if (!out) return;
+  const a = profileBrowserRows.find(d=>d.id === $("compareProfileA")?.value);
+  const b = profileBrowserRows.find(d=>d.id === $("compareProfileB")?.value);
+  out.innerHTML = profileCompareCard(a) + profileCompareCard(b);
+}
+
+
+function normalizeBuckScore(profile){
+  if(!profile) return null;
+  const candidates=[
+    profile.estimated_score,profile.score,profile.boone_crockett_score,profile.bc_score,profile.ai_score,
+    profile.ai_traits?.estimated_score,profile.ai_traits?.score,profile.ai_traits?.boone_crockett_score,
+    profile.ai_traits?.gross_score,profile.ai_traits?.antler_score,profile.ai_traits?.score_estimate,
+    profile.metadata?.estimated_score,profile.metadata?.score
+  ];
+  for(const value of candidates){
+    if(value==null||value==="") continue;
+    let n=null;
+    if(typeof value==="number") n=value;
+    else if(typeof value==="string"){const m=value.match(/(\d+(?:\.\d+)?)/);if(m)n=Number(m[1]);}
+    if(Number.isFinite(n)&&n>0)return n;
+  }
+  return null;
+}
+function buckScoreDisplay(profile){
+  const score=normalizeBuckScore(profile);
+  return score!=null?{value:`~${Number(score).toFixed(1)}"`,missing:false}:{value:"Scoring…",missing:true};
+}
+
+const dinrScoreRepairInFlight=new Set();
+async function requestMissingBuckScore(profile){
+  if(!profile?.id||dinrScoreRepairInFlight.has(profile.id)||!currentUser||normalizeBuckScore(profile)!=null)return;
+  dinrScoreRepairInFlight.add(profile.id);
+  try{
+    let photoId=profile.representative_photo_id||null;
+    if(!photoId){
+      const {data:s}=await sb.from("sightings").select("photo_id,created_at").eq("deer_profile_id",profile.id).not("photo_id","is",null).order("created_at",{ascending:false}).limit(1);
+      photoId=s?.[0]?.photo_id||null;
+    }
+    if(!photoId)return;
+    const {data:{session}}=await sb.auth.getSession();
+    if(!session?.access_token)return;
+    const response=await fetch(`${SUPABASE_URL}/functions/v1/process-deer-photo`,{
+      method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.access_token}`},
+      body:JSON.stringify({photo_id:photoId,force_rescore:true,deer_profile_id:profile.id})
+    });
+    if(!response.ok)console.warn("DINR score repair",await response.text());
+  }catch(err){console.warn("DINR score repair",err);}
+  finally{dinrScoreRepairInFlight.delete(profile.id);}
+}
+function repairVisibleBuckScores(profiles){
+  for(const p of(profiles||[])){
+    const sex=String(p.sex||p.ai_traits?.sex||"buck").toLowerCase();
+    if((!sex||sex==="buck"||sex==="male")&&normalizeBuckScore(p)==null)requestMissingBuckScore(p);
+  }
+}
+
+async function backfillMissingBuckScores(){
+  if(!currentUser) return;
+  try{
+    const {data:bucks,error}=await sb.from("deer_profiles")
+      .select("id,user_id,sex,score,estimated_score,ai_traits,metadata,antler_points")
+      .eq("user_id",currentUser.id);
+    if(error) return;
+
+    for(const buck of (bucks||[])){
+      const sex=String(buck.sex||buck.ai_traits?.sex||"").toLowerCase();
+      if(sex && sex!=="buck" && sex!=="male") continue;
+
+      const existing=normalizeBuckScore(buck);
+      if(existing==null) continue;
+
+      // Persist a canonical estimated_score when the schema supports it.
+      try{
+        await sb.from("deer_profiles")
+          .update({estimated_score:existing})
+          .eq("id",buck.id)
+          .eq("user_id",currentUser.id)
+          .or("estimated_score.is.null,estimated_score.lte.0");
+      }catch(e){}
+    }
+  }catch(e){ console.warn("buck score backfill",e); }
+}
+
+function renderDeerProfiles() {
+  if (!deerProfiles.length) {
+    $("deerCards").innerHTML =
+      '<div class="muted">No AI-created deer profiles yet.</div>';
+    return;
+  }
+
+  $("deerCards").innerHTML =
+    deerProfiles.map(
+      deer => `
+        <div class="stack-item">
+
+          <div class="stack-item-head">
+
+            <div>
+
+              <strong>
+                🦌
+                ${
+                  deer.nickname
+                  ||
+                  deer.deer_code
+                  ||
+                  "Unnamed deer"
+                }
+              </strong>
+
+              <div class="small muted">
+                ${
+                  deer.sex
+                  || "unknown"
+                }
+                ·
+                ${
+                  deer.sighting_count
+                  || 0
+                }
+                sightings
+              </div>
+
+              ${
+                deer.estimated_age_class
+                  ? `<div class="small muted">Estimated age: ${deer.estimated_age_class}</div>`
+                  : ""
+              }
+
+            </div>
+
+            <button
+              class="secondary mini"
+              type="button"
+              onclick="renameDeer('${deer.id}', ${JSON.stringify(deer.nickname || "")})"
+            >
+              Rename
+            </button>
+
+          </div>
+
+          ${
+            deer.antler_signature
+              ? `<p class="small">Antlers: ${deer.antler_signature}</p>`
+              : ""
+          }
+
+          ${
+            deer.phenotype_notes
+              ? `<p class="small">Traits: ${deer.phenotype_notes}</p>`
+              : ""
+          }
+
+        </div>
+      `
+    )
+    .join("");
+}
+
+
+function clearPrivateUi() {
+  properties = [];
+  cameras = [];
+  deerProfiles = [];
+}
+
+
+/* ============================================================
+   AREA INTELLIGENCE
+   ============================================================ */
+
+async function loadJson(
+  path,
+  fallback
+) {
+  try {
+    const response =
+      await fetch(
+        path,
+        {
+          cache: "no-store"
+        }
+      );
+
+    if (!response.ok) {
+      throw new Error();
+    }
+
+    return await response.json();
+
+  } catch {
+    return fallback;
+  }
+}
+
+
+function miles(
+  aLat,
+  aLon,
+  bLat,
+  bLon
+) {
+  const R = 3958.7613;
+
+  const dLat =
+    rad(
+      bLat - aLat
+    );
+
+  const dLon =
+    rad(
+      bLon - aLon
+    );
+
+  const a =
+    Math.sin(dLat / 2) ** 2
+    +
+    Math.cos(rad(aLat))
+    *
+    Math.cos(rad(bLat))
+    *
+    Math.sin(dLon / 2) ** 2;
+
+  return 2
+    *
+    R
+    *
+    Math.asin(
+      Math.sqrt(a)
+    );
+}
+
+
+async function geocode(query) {
+  const url =
+    "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=us&q="
+    +
+    encodeURIComponent(query);
+
+  const response =
+    await fetch(url);
+
+  const data =
+    await response.json();
+
+  if (!data.length) {
+    throw new Error(
+      "Location not found."
+    );
+  }
+
+  return {
+    lat:
+      Number(
+        data[0].lat
+      ),
+
+    lon:
+      Number(
+        data[0].lon
+      ),
+
+    label:
+      data[0].display_name
+  };
+}
+
+
+let areaSatelliteLayer = null;
+let areaStreetLayer = null;
+let areaAssetGroup = null;
+let areaBoundaryGroup = null;
+let areaParcelGroup = null;
+let areaParcelRequestId = 0;
+let areaSelectedAssetType = null;
+let areaBoundaryMode = false;
+let areaBoundaryPoints = [];
+let areaStands = [];
+
+function areaStoreKey(propertyId) { return `die-area-map-${currentUser?.id || "user"}-${propertyId}`; }
+function getAreaStore(propertyId) {
+  try { return JSON.parse(localStorage.getItem(areaStoreKey(propertyId))) || {assets:[], boundary:[]}; }
+  catch { return {assets:[], boundary:[]}; }
+}
+function saveAreaStore(propertyId, value) { localStorage.setItem(areaStoreKey(propertyId), JSON.stringify(value)); }
+
+function initMapSafe() {
+  if (typeof L === "undefined") {
+    console.error("Leaflet did not load.");
+    const msg = $("areaPlaceMessage");
+    if (msg) msg.textContent = "Map library did not load. Refresh the page and try again.";
+    return;
+  }
+
+  const container = $("map");
+  if (!container) return;
+
+  // Do not create Leaflet while Area Intelligence is display:none.
+  const areaTab = $("tab-area-intel");
+  if (areaTab?.classList.contains("hidden")) return;
+
+  if (map) {
+    map.invalidateSize(true);
+    return;
+  }
+
+  map = L.map(container, {
+    zoomControl: true,
+    attributionControl: true,
+    preferCanvas: true
+  }).setView([34.72, -86.65], 16);
+
+  areaSatelliteLayer = L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    {
+      maxZoom: 20,
+      maxNativeZoom: 19,
+      attribution: "Imagery © Esri, Maxar, Earthstar Geographics"
+    }
+  );
+
+  areaStreetLayer = L.tileLayer(
+    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    {
+      maxZoom: 20,
+      maxNativeZoom: 19,
+      attribution: "© OpenStreetMap contributors"
+    }
+  );
+
+  areaSatelliteLayer.addTo(map);
+  layerGroup = L.layerGroup().addTo(map);
+  areaAssetGroup = L.layerGroup().addTo(map);
+  areaBoundaryGroup = L.layerGroup().addTo(map);
+  areaParcelGroup = L.layerGroup();
+
+  map.on("moveend", () => {
+    if ($("areaParcelLayer")?.checked) loadTaxParcelsForCurrentView();
+  });
+
+  // One map click handler controls both boundary drawing and asset placement.
+  map.on("click", handleAreaMapClick);
+
+  // Make sure the map is actually interactive once the tab has painted.
+  setTimeout(() => {
+    map.invalidateSize(true);
+    container.style.cursor = "crosshair";
+  }, 180);
+}
+
+
+const ALABAMA_PARCEL_SERVICES = {
+  madison: {
+    label: "Madison County tax parcels",
+    type: "tile",
+    url: "https://maps.huntsvilleal.gov/server/rest/services/Tiled/MadisonCountyParcels/MapServer/tile/{z}/{y}/{x}",
+    minZoom: 6,
+    maxZoom: 20
+  },
+  limestone: {
+    label: "Limestone County tax parcels",
+    url: "https://gis.limestonecounty-al.gov/arcgis/rest/services/Limestone_Parcels/FeatureServer/0",
+    fields: "ParcelNo,PID,CALC_ACRE,StatedArea"
+  },
+  jackson: {
+    label: "Jackson County tax parcels",
+    url: "https://services3.arcgis.com/7ScJ8q0HhcQyXcHe/ArcGIS/rest/services/Jackson_County_GIS/FeatureServer/5",
+    fields: "*"
+  }
+};
+
+function normalizeCountyName(value){
+  return String(value||"")
+    .toLowerCase()
+    .replace(/county/g,"")
+    .replace(/[^a-z]/g,"")
+    .trim();
+}
+
+function currentAreaProperty(){
+  const id=$("areaPropertySelect")?.value;
+  return [...properties,...sharedProperties].find(p=>p.id===id)||null;
+}
+
+function parcelServiceForProperty(property){
+  const county=normalizeCountyName(property?.county);
+  return ALABAMA_PARCEL_SERVICES[county] || null;
+}
+
+function parcelLabel(props={}){
+  const parcel=props.ParcelNo||props.PARCELNO||props.PARCEL_ID||props.PPIN||props.REID||props.PID||props.PARCEL||props.PARCELID||props.ParcelID||"Parcel";
+  const acres=props.CALC_ACRE??props.StatedArea??props.ACRES??props.ACREAGE??props.Acres??props.Acreage;
+  const acresText=(acres!==undefined && acres!==null && acres!=="") ? `<br><small>${esc(String(acres))} acres</small>` : "";
+  return `<strong>${esc(String(parcel))}</strong>${acresText}<br><small>Tax-map boundary · reference only</small>`;
+}
+
+async function loadTaxParcelsForCurrentView(){
+  if(!map || !areaParcelGroup || !$("areaParcelLayer")?.checked) return;
+  const property=currentAreaProperty();
+  const status=$("areaParcelStatus");
+  if(!property){
+    areaParcelGroup.clearLayers();
+    if(status) status.textContent="Choose a property to load parcel borders.";
+    return;
+  }
+  const service=parcelServiceForProperty(property);
+  if(!service){
+    areaParcelGroup.clearLayers();
+    if(status) status.textContent=`Tax parcel overlay is not connected for ${property.county||"this county"} yet.`;
+    return;
+  }
+
+  const requestId=++areaParcelRequestId;
+  if(status) status.textContent=`Loading ${service.label}…`;
+
+  areaParcelGroup.clearLayers();
+  if(!map.hasLayer(areaParcelGroup)) areaParcelGroup.addTo(map);
+
+  // Madison County publishes a cached Web Mercator parcel layer. Loading it as
+  // map tiles avoids browser CORS/GeoJSON failures from direct FeatureServer queries.
+  if(service.type==="tile"){
+    const tile=L.tileLayer(service.url,{
+      minZoom:service.minZoom||0,
+      maxZoom:service.maxZoom||20,
+      maxNativeZoom:service.maxZoom||20,
+      opacity:.9,
+      attribution:"Madison County / City of Huntsville GIS"
+    });
+    tile.on("load",()=>{
+      if(requestId!==areaParcelRequestId) return;
+      if(status) status.textContent=`${service.label} shown. Zoom in for individual property lines. Reference only — not a survey.`;
+    });
+    tile.on("tileerror",(e)=>{
+      console.warn("Parcel tile failed",e);
+      if(requestId!==areaParcelRequestId) return;
+      if(status) status.textContent=`Some ${service.label} tiles could not load. Pan or zoom and DINR will retry automatically.`;
+    });
+    tile.addTo(areaParcelGroup);
+    if(map.getZoom()<14) map.setZoom(14);
+    return;
+  }
+
+  const b=map.getBounds();
+  const envelope=[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()].join(",");
+  const params=new URLSearchParams({
+    where:"1=1",
+    geometry:envelope,
+    geometryType:"esriGeometryEnvelope",
+    inSR:"4326",
+    spatialRel:"esriSpatialRelIntersects",
+    outFields:service.fields||"*",
+    returnGeometry:"true",
+    outSR:"4326",
+    f:"geojson"
+  });
+
+  try{
+    const res=await fetch(`${service.url}/query?${params.toString()}`);
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const geo=await res.json();
+    if(requestId!==areaParcelRequestId) return;
+    const features=Array.isArray(geo?.features)?geo.features:[];
+    L.geoJSON(geo,{
+      style:{color:"#ffd089",weight:1.25,opacity:.9,fillOpacity:0},
+      onEachFeature:(feature,layer)=>layer.bindPopup(parcelLabel(feature.properties||{}),{maxWidth:260})
+    }).addTo(areaParcelGroup);
+    if(status) status.textContent=features.length
+      ? `${features.length} tax parcels shown from ${service.label}. Reference only — not a survey.`
+      : `No tax parcels returned in this view from ${service.label}.`;
+  }catch(err){
+    console.error("Parcel overlay failed",err);
+    areaParcelGroup.clearLayers();
+    if(status) status.textContent=`Could not load ${service.label}. The county GIS service may be temporarily unavailable.`;
+  }
+}
+
+function toggleTaxParcelLayer(enabled){
+  if(!map || !areaParcelGroup) return;
+  if(enabled){
+    if(!map.hasLayer(areaParcelGroup)) areaParcelGroup.addTo(map);
+    loadTaxParcelsForCurrentView();
+  }else{
+    areaParcelRequestId++;
+    areaParcelGroup.clearLayers();
+    if(map.hasLayer(areaParcelGroup)) map.removeLayer(areaParcelGroup);
+    const status=$("areaParcelStatus");
+    if(status) status.textContent="Parcel borders hidden.";
+  }
+}
+
+function assetMeta(type){
+  return ({camera:["📷","#4d91ff"],stand:["♜","#71c837"],feeder:["▾","#ff7900"],scrape:["♨","#ef4444"],foodplot:["♧","#71c837"],water:["◆","#9b6cff"],shootinghouse:["⌂","#22c7c7"],trail:["⌁","#d89a4a"],harvest:["🦌","#ff7900"],other:["＋","#aaa"]})[type] || ["＋","#aaa"];
+}
+function areaMarkerIcon(type){ const [icon,color]=assetMeta(type); return L.divIcon({className:"",iconSize:[36,36],iconAnchor:[18,34],html:`<div class="die-map-marker" style="color:${color}"><span>${icon}</span></div>`}); }
+
+async function syncAreaPropertyControls(preferredId=null){
+  const sel=$("areaPropertySelect"); if(!sel)return;
+  const current=preferredId||sel.value;
+  const ownOptions=properties.map(p=>`<option value="${p.id}">${esc(p.name||"Property")}</option>`).join("");
+  const sharedOptions=sharedProperties.length
+    ? `<optgroup label="Shared with me">${sharedProperties.map(p=>`<option value="${p.id}">${esc(p.name||"Shared Property")}</option>`).join("")}</optgroup>`
+    : "";
+  sel.innerHTML='<option value="">Choose property…</option>'+ownOptions+sharedOptions;
+  const all=[...properties,...sharedProperties];
+  if(current && all.some(p=>p.id===current)) sel.value=current;
+  else if(properties.length) sel.value=properties[0].id;
+  else if(sharedProperties.length) sel.value=sharedProperties[0].id;
+  await loadAreaProperty();
+}
+
+async function loadAreaProperty(){
+  const propertyId=$("areaPropertySelect")?.value;
+  if(!propertyId){
+    areaStands=[]; areaCameras=[]; areaDbAssets=[]; areaBoundaryStored=[]; areaHarvests=[]; areaCameraPhotoCache.clear(); harvestPhotoUrlCache.clear();
+    $("areaPlaceMessage").textContent="Select a property to begin."; renderAreaMap(); return;
+  }
+
+  const [standsRes,camsRes,assetsRes,mapRes,harvestRes]=await Promise.all([
+    sb.from("stands").select("*").eq("property_id",propertyId).order("name"),
+    sb.from("cameras").select("*").eq("property_id",propertyId).order("name"),
+    sb.from("property_assets").select("*").eq("property_id",propertyId).order("created_at"),
+    sb.from("property_maps").select("boundary").eq("property_id",propertyId).maybeSingle(),
+    sb.from("harvest_events").select("*").eq("property_id",propertyId).order("harvested_at",{ascending:false})
+  ]);
+
+  areaStands=standsRes.data||[];
+  areaCameras=camsRes.data||[];
+  areaDbAssets=(assetsRes.data||[]).map(a=>({
+    id:a.id, refId:null, type:a.asset_type, name:a.name, lat:+a.lat, lon:+a.lon
+  }));
+  areaBoundaryStored=Array.isArray(mapRes.data?.boundary)?mapRes.data.boundary:[];
+  areaHarvests=harvestRes.data||[];
+  harvestPhotoUrlCache.clear();
+  await Promise.all(areaHarvests.filter(h=>h.photo_path).map(async h=>{
+    const {data:signed}=await sb.storage.from("harvest-photos").createSignedUrl(h.photo_path,600);
+    if(signed?.signedUrl) harvestPhotoUrlCache.set(h.id,signed.signedUrl);
+  }));
+  await loadAreaCameraPhotos(propertyId);
+  renderAreaMap();
+}
+
+async function loadAreaCameraPhotos(propertyId){
+  areaCameraPhotoCache.clear();
+  const {data:photos}=await sb.from("trail_photos")
+    .select("id,camera_id,storage_path,captured_at,original_filename")
+    .eq("property_id",propertyId)
+    .not("camera_id","is",null)
+    .order("captured_at",{ascending:false})
+    .limit(80);
+
+  const grouped={};
+  for(const photo of photos||[]){
+    if(!grouped[photo.camera_id]) grouped[photo.camera_id]=[];
+    if(grouped[photo.camera_id].length<3) grouped[photo.camera_id].push(photo);
+  }
+
+  for(const [cameraId,rows] of Object.entries(grouped)){
+    const previews=[];
+    for(const row of rows){
+      const {data:signed}=await sb.storage.from("trail-camera-photos").createSignedUrl(row.storage_path,600);
+      if(signed?.signedUrl) previews.push({url:signed.signedUrl,captured_at:row.captured_at});
+    }
+    areaCameraPhotoCache.set(cameraId,previews);
+  }
+}
+
+
+let assetMetaEditing=null;
+
+function closeAssetMetaModal(){
+  assetMetaEditing=null;
+  $("assetMetaModal")?.classList.add("hidden");
+  $("assetMetaModal")?.setAttribute("aria-hidden","true");
+  if($("assetMetaMessage")) $("assetMetaMessage").textContent="";
+}
+
+function findAreaAsset(kind,id){
+  if(kind==="camera") return areaCameras.find(x=>x.id===id);
+  if(kind==="stand") return areaStands.find(x=>x.id===id);
+  return areaDbAssets.find(x=>x.id===id);
+}
+
+function openAssetMetaModal(kind,id){
+  const item=findAreaAsset(kind,id); if(!item)return;
+  const propertyId=item.property_id||$("areaPropertySelect")?.value;
+  if(!properties.some(p=>p.id===propertyId)){ alert("Shared property assets are view-only."); return; }
+  assetMetaEditing={kind,id,propertyId};
+  const meta=item.metadata||{};
+  $("assetMetaKind").value=kind; $("assetMetaId").value=id;
+  $("assetMetaTitle").textContent=kind==="camera"?"Camera Details":`${(item.asset_type||kind).replace(/(^|\s)\S/g,s=>s.toUpperCase())} Details`;
+  $("assetMetaName").value=item.name||"";
+  $("assetMetaType").value=item.asset_type||kind;
+  $("assetMetaFacing").value=item.facing||meta.facing||"N";
+  $("assetMetaHabitat").value=item.primary_habitat||meta.habitat||"";
+  $("assetMetaDate").value=meta.placed_date||"";
+  $("assetMetaStatus").value=meta.status||"";
+  $("assetMetaNotes").value=item.notes||meta.notes||"";
+  $("assetFacingWrap").classList.toggle("hidden",kind!=="camera");
+  $("assetCameraUploadArea").classList.toggle("hidden",kind!=="camera");
+  $("assetMetaMessage").textContent="";
+  $("assetMetaModal").classList.remove("hidden"); $("assetMetaModal").setAttribute("aria-hidden","false");
+}
+window.dieEditAsset=(kind,id)=>{try{map?.closePopup();}catch(e){} openAssetMetaModal(kind,id);};
+
+async function saveAssetMetadata(){
+  if(!assetMetaEditing||!currentUser)return;
+  const {kind,id}=assetMetaEditing;
+  const item=findAreaAsset(kind,id); if(!item)return;
+  const name=$("assetMetaName").value.trim()||item.name||kind;
+  const meta={...(item.metadata||{}),habitat:$("assetMetaHabitat").value.trim()||null,placed_date:$("assetMetaDate").value||null,status:$("assetMetaStatus").value.trim()||null,notes:$("assetMetaNotes").value.trim()||null};
+  $("assetMetaMessage").textContent="Saving…";
+  try{
+    if(kind==="camera"){
+      const {error}=await sb.from("cameras").update({name,facing:$("assetMetaFacing").value,primary_habitat:$("assetMetaHabitat").value.trim()||"other",notes:$("assetMetaNotes").value.trim()||null,metadata:meta}).eq("id",id).eq("user_id",currentUser.id);
+      if(error)throw error;
+    }else if(kind==="stand" && areaStands.some(x=>x.id===id)){
+      const {error}=await sb.from("stands").update({name,notes:$("assetMetaNotes").value.trim()||null,metadata:meta}).eq("id",id).eq("user_id",currentUser.id);
+      if(error)throw error;
+    }else{
+      const {error}=await sb.from("property_assets").update({name,metadata:meta}).eq("id",id).eq("owner_id",currentUser.id);
+      if(error)throw error;
+    }
+    await loadAreaProperty(); closeAssetMetaModal(); $("areaPlaceMessage").textContent=`${name} metadata updated.`;
+  }catch(err){console.error(err);$("assetMetaMessage").textContent=err?.message||"Could not save metadata.";}
+}
+
+async function deleteMappedAsset(kind,id){
+  const item=findAreaAsset(kind,id); if(!item||!currentUser)return;
+  const label=item.name||kind;
+  if(!confirm(`Delete "${label}"? This cannot be undone.`))return;
+  try{
+    if(kind==="camera"){
+      const {error}=await sb.from("cameras").delete().eq("id",id).eq("user_id",currentUser.id); if(error)throw error;
+    }else if(kind==="stand" && areaStands.some(x=>x.id===id)){
+      const {error}=await sb.from("stands").delete().eq("id",id).eq("user_id",currentUser.id); if(error)throw error;
+    }else{
+      const {error}=await sb.from("property_assets").delete().eq("id",id).eq("owner_id",currentUser.id); if(error)throw error;
+    }
+    closeAssetMetaModal(); await refreshPrivateData(); await loadAreaProperty(); $("areaPlaceMessage").textContent=`${label} deleted.`;
+  }catch(err){console.error(err);$("assetMetaMessage").textContent=err?.message||"Could not delete asset.";}
+}
+
+async function deleteSelectedProperty(){
+  const propertyId=$("areaPropertySelect")?.value; if(!propertyId)return;
+  const p=properties.find(x=>x.id===propertyId); if(!p){alert("Shared properties cannot be deleted.");return;}
+  if(!confirm(`Delete "${p.name}" and its mapped assets/cameras? This cannot be undone.`))return;
+  try{
+    // Child rows are protected by RLS; delete owned data first, then property.
+    await sb.from("property_assets").delete().eq("property_id",propertyId).eq("owner_id",currentUser.id);
+    await sb.from("stands").delete().eq("property_id",propertyId).eq("user_id",currentUser.id);
+    await sb.from("cameras").delete().eq("property_id",propertyId).eq("user_id",currentUser.id);
+    await sb.from("harvest_events").delete().eq("property_id",propertyId).eq("user_id",currentUser.id);
+    await sb.from("property_maps").delete().eq("property_id",propertyId).eq("owner_id",currentUser.id);
+    const {error}=await sb.from("properties").delete().eq("id",propertyId).eq("user_id",currentUser.id); if(error)throw error;
+    $("areaPropertySelect").value=""; await refreshPrivateData(); await loadAreaProperty();
+    $("areaPlaceMessage").textContent="Property deleted.";
+  }catch(err){console.error(err);$("areaPlaceMessage").textContent=err?.message||"Could not delete property.";}
+}
+
+function renderAreaMap(){
+  if(!map || !areaAssetGroup || !areaBoundaryGroup)return;
+  areaAssetGroup.clearLayers(); areaBoundaryGroup.clearLayers();
+  const propertyId=$("areaPropertySelect")?.value;
+  const property=[...properties,...sharedProperties].find(p=>p.id===propertyId);
+  const isOwner=properties.some(p=>p.id===propertyId);
+
+  const assets=[...areaDbAssets];
+  areaCameras.forEach(c=>{
+    if(c.lat!=null&&c.lon!=null) assets.push({id:`camera-${c.id}`,refId:c.id,type:"camera",name:c.name,lat:+c.lat,lon:+c.lon,sourceKind:"camera"});
+  });
+  areaStands.forEach(st=>{
+    if(st.lat!=null&&st.lon!=null) assets.push({id:`stand-${st.id}`,refId:st.id,type:"stand",name:st.name,lat:+st.lat,lon:+st.lon,sourceKind:"stand"});
+  });
+  areaHarvests.forEach(h=>{
+    if(h.lat!=null&&h.lon!=null) assets.push({id:`harvest-${h.id}`,refId:h.id,type:"harvest",name:h.deer_name||`${h.sex||"Deer"} harvest`,lat:+h.lat,lon:+h.lon,harvest:h});
+  });
+
+  assets.forEach(a=>{
+    const marker=L.marker([a.lat,a.lon],{icon:areaMarkerIcon(a.type)});
+    if(a.type==="harvest" && a.harvest){
+      const h=a.harvest; const photo=harvestPhotoUrlCache.get(h.id); const weather=h.weather_metadata||{};
+      const popup=`<div class="harvest-marker-popup"><strong>🦌 ${esc(h.deer_name||"Harvest")}</strong><br><small>${esc(String(h.sex||"deer"))} · ${h.harvested_at?new Date(h.harvested_at).toLocaleString():"Date not set"}${h.antler_points!=null?` · ${h.antler_points} pt`:""}${h.score!=null?` · ${h.score}"`:""}</small>${h.approach_direction?`<br><small>Deer came from: <strong>${esc(h.approach_direction)}</strong>${h.approach_notes?` · ${esc(h.approach_notes)}`:""}</small>`:""}${photo?`<br><img src="${photo}" alt="Harvest photo">`:""}${weather.harvest_temperature_f!=null?`<br><small>Weather: ${weather.harvest_temperature_f}°F · ${weather.wind_speed_mph??"—"} mph · ${weather.pressure_msl_hpa??"—"} hPa</small>`:"<br><small>Weather analysis pending</small>"}${isOwner?`<br><button class="harvest-edit-btn" type="button" onclick="window.dieEditHarvest('${h.id}')">Edit harvest metadata</button>`:""}</div>`;
+      marker.bindPopup(popup,{maxWidth:320});
+    } else if(a.type==="camera" && a.refId){
+      const photos=areaCameraPhotoCache.get(a.refId)||[];
+      const thumbs=photos.length
+        ? `<div class="camera-hover-grid">${photos.map(p=>`<img src="${p.url}" alt="Recent camera photo">`).join("")}</div>`
+        : `<div class="camera-hover-empty">No uploaded photos yet.</div>`;
+      const hover=`<div class="camera-hover-card"><strong>📷 ${esc(a.name||"Camera")}</strong>${thumbs}<small>${photos.length ? "Latest uploaded photos" : "No photos saved to this camera yet."}</small>${isOwner?`<div class="camera-popup-actions"><button class="camera-upload-btn" type="button" onclick="window.dieOpenCameraUpload('${a.refId}')">＋ Upload Photos to This Camera</button><button class="asset-edit-btn" type="button" onclick="window.dieEditAsset('camera','${a.refId}')">Edit Camera Metadata</button></div>`:""}</div>`;
+      marker.bindTooltip(hover,{direction:"top",offset:[0,-28],sticky:true,className:"die-camera-tooltip",opacity:1});
+      marker.bindPopup(hover,{maxWidth:360});
+    } else {
+      const kind=a.sourceKind||"asset"; const editId=a.refId||a.id;
+      const raw=kind==="asset"?areaDbAssets.find(x=>x.id===editId):findAreaAsset(kind,editId);
+      const meta=raw?.metadata||{};
+      const details=[meta.habitat,meta.status,meta.notes].filter(Boolean).map(x=>`<br><small>${esc(String(x))}</small>`).join("");
+      marker.bindPopup(`<div class="asset-marker-popup"><strong>${assetMeta(a.type)[0]} ${esc(a.name||a.type)}</strong><br><small>${esc(a.type)}</small>${details}${isOwner?`<div class="asset-popup-actions"><button class="asset-edit-btn" type="button" onclick="window.dieEditAsset('${kind}','${editId}')">Edit Metadata</button></div>`:""}</div>`,{maxWidth:320});
+    }
+    marker.addTo(areaAssetGroup);
+  });
+
+  if(areaBoundaryStored?.length>=3){
+    L.polygon(areaBoundaryStored,{color:"#ff7900",weight:3,fillColor:"#ff7900",fillOpacity:.05}).addTo(areaBoundaryGroup);
+  }
+
+  const bounds=[];
+  assets.forEach(a=>bounds.push([a.lat,a.lon]));
+  (areaBoundaryStored||[]).forEach(x=>bounds.push(x));
+  if(bounds.length) map.fitBounds(bounds,{padding:[45,45],maxZoom:18});
+  else if(property?.lat!=null && property?.lon!=null) map.setView([+property.lat,+property.lon],17);
+
+  $("areaCameraCount").textContent=areaCameras.length;
+  $("areaStandCount").textContent=areaStands.length;
+  $("areaFeederCount").textContent=assets.filter(a=>a.type==="feeder").length;
+  $("areaScrapeCount").textContent=assets.filter(a=>a.type==="scrape").length;
+  if($("areaHarvestCount")) $("areaHarvestCount").textContent=areaHarvests.length;
+  $("areaOtherCount").textContent=assets.filter(a=>!["camera","stand","feeder","scrape","harvest"].includes(a.type)).length;
+  $("areaAssetTitle").textContent=(property?.name||"Select a property")+(isOwner?"":" · Shared");
+  $("areaAssetList").innerHTML=assets.length?assets.map(a=>{const kind=a.sourceKind||"asset";const editId=a.refId||a.id;return `<button type="button" class="area-asset-chip asset-clickable" onclick="window.dieEditAsset('${kind}','${editId}')">${assetMeta(a.type)[0]} ${esc(a.name||a.type)}</button>`}).join(""):'<span class="muted">No mapped assets yet.</span>';
+
+  const addPanel=document.querySelector(".asset-picker");
+  const boundaryBtn=$("areaBoundaryBtn");
+  if(addPanel) addPanel.classList.toggle("shared-readonly",!!propertyId && !isOwner);
+  if(boundaryBtn) boundaryBtn.disabled=!!propertyId && !isOwner;
+  $("areaPlaceMessage").textContent=!propertyId
+    ?"Select a property to begin."
+    :isOwner
+      ?"Choose an asset above, then click the map to place it."
+      :"Shared property: view-only. Hover over a camera to preview its latest photos.";
+
+  if ($("areaParcelLayer")?.checked) {
+    setTimeout(loadTaxParcelsForCurrentView, 50);
+  }
+}
+
+async function handleAreaMapClick(e){
+  const propertyId=$("areaPropertySelect")?.value; if(!propertyId)return;
+  const isOwner=properties.some(p=>p.id===propertyId);
+  if(!isOwner){
+    $("areaPlaceMessage").textContent="This property was shared with you as view-only.";
+    return;
+  }
+  if(areaBoundaryMode){
+    areaBoundaryPoints.push([e.latlng.lat,e.latlng.lng]);
+    areaBoundaryGroup.clearLayers();
+    areaBoundaryPoints.forEach(pt => L.circleMarker(pt,{radius:5,color:'#ff7900',fillColor:'#ff7900',fillOpacity:1,weight:2}).addTo(areaBoundaryGroup));
+    if(areaBoundaryPoints.length>1) L.polyline(areaBoundaryPoints,{color:'#ff7900',weight:3,dashArray:'7 7'}).addTo(areaBoundaryGroup);
+    $("areaPlaceMessage").textContent=`Boundary point ${areaBoundaryPoints.length} added. Keep clicking corners, then press Finish Boundary.`;
+    return;
+  }
+  if(!areaSelectedAssetType)return;
+  const type=areaSelectedAssetType;
+  if(type==="harvest"){
+    openHarvestModal(e.latlng.lat,e.latlng.lng);
+    return;
+  }
+  let defaultName=type.charAt(0).toUpperCase()+type.slice(1);
+  if(type==="camera"){ const unplaced=areaCameras.filter(c=>c.lat==null||c.lon==null); if(unplaced.length) defaultName=unplaced[0].name; }
+  if(type==="stand"){ const unplaced=areaStands.filter(st=>st.lat==null||st.lon==null); if(unplaced.length) defaultName=unplaced[0].name; }
+  const name=prompt(`Name this ${type}:`,defaultName); if(name===null)return;
+  const cleanName=name.trim()||defaultName;
+
+  let placedCameraId=null;
+  if(type==="camera"){
+    const cam=areaCameras.find(c=>c.name?.toLowerCase()===cleanName.toLowerCase());
+    if(cam){
+      const {data,error}=await sb.from("cameras").update({lat:e.latlng.lat,lon:e.latlng.lng}).eq("id",cam.id).eq("user_id",currentUser.id).select("*").single();
+      if(error){$("areaPlaceMessage").textContent=error.message;return;}
+      placedCameraId=data.id;
+    } else {
+      const {data,error}=await sb.from("cameras").insert({
+        user_id:currentUser.id,
+        property_id:propertyId,
+        name:cleanName,
+        facing:"N",
+        primary_habitat:"other",
+        notes:null,
+        lat:e.latlng.lat,
+        lon:e.latlng.lng,
+        active:true
+      }).select("*").single();
+      if(error){$("areaPlaceMessage").textContent=error.message;return;}
+      placedCameraId=data.id;
+    }
+  } else if(type==="stand"){
+    const st=areaStands.find(s=>s.name?.toLowerCase()===cleanName.toLowerCase());
+    if(st){
+      const {error}=await sb.from("stands").update({lat:e.latlng.lat,lon:e.latlng.lng}).eq("id",st.id).eq("user_id",currentUser.id);
+      if(error){$("areaPlaceMessage").textContent=error.message;return;}
+    } else {
+      const {error}=await sb.from("property_assets").insert({property_id:propertyId,owner_id:currentUser.id,asset_type:type,name:cleanName,lat:e.latlng.lat,lon:e.latlng.lng,metadata:{placed_date:new Date().toISOString().slice(0,10)}});
+      if(error){$("areaPlaceMessage").textContent=error.message;return;}
+    }
+  } else {
+    const {error}=await sb.from("property_assets").insert({property_id:propertyId,owner_id:currentUser.id,asset_type:type,name:cleanName,lat:e.latlng.lat,lon:e.latlng.lng,metadata:{placed_date:new Date().toISOString().slice(0,10)}});
+    if(error){$("areaPlaceMessage").textContent=error.message;return;}
+  }
+
+  areaSelectedAssetType=null;
+  document.querySelectorAll("[data-asset-type]").forEach(b=>b.classList.remove("active"));
+  if(map) map.getContainer().style.cursor="grab";
+  await loadAreaProperty();
+  if(type==="camera" && placedCameraId){
+    $("areaPlaceMessage").textContent=`${cleanName} placed. Add photos now, or click the camera anytime to upload more.`;
+    setTimeout(()=>openCameraUploadModal(placedCameraId),120);
+  } else {
+    $("areaPlaceMessage").textContent=`${cleanName} placed and saved. Click it anytime to edit metadata or delete it.`;
+  }
+}
+
+function resetHarvestForm(){
+  harvestEditingId=null;
+  $('harvestEditId').value='';
+  $('harvestDate').value=new Date().toISOString().slice(0,10);
+  $('harvestTime').value=''; $('harvestName').value=''; $('harvestPoints').value=''; $('harvestScore').value=''; $('harvestAge').value=''; $('harvestNotes').value=''; $('harvestPhoto').value='';
+  $('harvestApproachDirection').value=''; $('harvestApproachNotes').value='';
+  $('harvestPhotoPreview').removeAttribute('src');
+  $('harvestDeleteBtn')?.classList.add('hidden');
+  $('harvestSaveBtn').textContent='Save Harvest + Analyze';
+}
+function openHarvestModal(lat,lon){
+  harvestPendingPoint={lat:+lat,lon:+lon,propertyId:$('areaPropertySelect')?.value||''};
+  const modal=$('harvestModal'); if(!modal)return;
+  resetHarvestForm();
+  $('harvestLatLon').textContent=`${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  $('harvestLocationLabel').textContent='Map location selected';
+  $('harvestMessage').textContent='';
+  modal.classList.remove('hidden'); modal.setAttribute('aria-hidden','false');
+}
+async function openExistingHarvest(id){
+  const h=areaHarvests.find(x=>x.id===id); if(!h)return;
+  harvestEditingId=id;
+  harvestPendingPoint={lat:+h.lat,lon:+h.lon,propertyId:h.property_id};
+  $('harvestEditId').value=id;
+  const d=String(h.harvested_at||'');
+  $('harvestDate').value=d.slice(0,10);
+  $('harvestTime').value=d.length>=16?d.slice(11,16):'';
+  $('harvestSex').value=h.sex||'buck';
+  $('harvestName').value=h.deer_name||'';
+  $('harvestPoints').value=h.antler_points??'';
+  $('harvestScore').value=h.score??'';
+  $('harvestAge').value=h.age_estimate??'';
+  $('harvestNotes').value=h.notes||'';
+  $('harvestApproachDirection').value=h.approach_direction||'';
+  $('harvestApproachNotes').value=h.approach_notes||'';
+  $('harvestPhoto').value='';
+  const photo=harvestPhotoUrlCache.get(h.id);
+  if(photo) $('harvestPhotoPreview').src=photo; else $('harvestPhotoPreview').removeAttribute('src');
+  $('harvestLatLon').textContent=`${(+h.lat).toFixed(5)}, ${(+h.lon).toFixed(5)}`;
+  $('harvestLocationLabel').textContent='Existing harvest location';
+  $('harvestMessage').textContent='Edit any metadata below. Weather will be reanalyzed if the date/time changes.';
+  $('harvestDeleteBtn')?.classList.remove('hidden');
+  $('harvestSaveBtn').textContent='Save Changes';
+  $('harvestModal').classList.remove('hidden'); $('harvestModal').setAttribute('aria-hidden','false');
+}
+window.dieEditHarvest=(id)=>{ try{map?.closePopup();}catch(e){} openExistingHarvest(id); };
+function closeHarvestModal(){
+  $('harvestModal')?.classList.add('hidden'); $('harvestModal')?.setAttribute('aria-hidden','true'); harvestPendingPoint=null; harvestEditingId=null;
+}
+
+function previewHarvestPhoto(){
+  const f=$('harvestPhoto')?.files?.[0]; const img=$('harvestPhotoPreview'); if(!img)return;
+  if(!f){img.removeAttribute('src');return;} img.src=URL.createObjectURL(f);
+}
+function weatherNearestIndex(times, targetIso){
+  if(!Array.isArray(times)||!times.length)return -1; const target=new Date(targetIso).getTime(); let best=0,dist=Infinity;
+  times.forEach((t,i)=>{const d=Math.abs(new Date(t).getTime()-target);if(d<dist){best=i;dist=d;}}); return best;
+}
+async function analyzeHarvestWeather(harvestId,lat,lon,harvestedAt){
+  try{
+    const d=new Date(harvestedAt); const start=new Date(d); start.setDate(start.getDate()-2); const end=new Date(d); end.setDate(end.getDate()+1);
+    const fmt=x=>x.toISOString().slice(0,10);
+    const params=new URLSearchParams({latitude:String(lat),longitude:String(lon),start_date:fmt(start),end_date:fmt(end),timezone:'auto',temperature_unit:'fahrenheit',wind_speed_unit:'mph',precipitation_unit:'inch',hourly:'temperature_2m,relative_humidity_2m,precipitation,pressure_msl,cloud_cover,wind_speed_10m,wind_direction_10m'});
+    const res=await fetch(`https://archive-api.open-meteo.com/v1/archive?${params}`); if(!res.ok)throw new Error(`Historical weather ${res.status}`); const data=await res.json(); const h=data.hourly||{};
+    const i=weatherNearestIndex(h.time,harvestedAt); if(i<0)throw new Error('No historical weather returned');
+    const past=(hours)=>Math.max(0,i-hours);
+    const n=v=>Number.isFinite(Number(v))?Number(v):null;
+    const metadata={source:'Open-Meteo Historical Weather API',model_note:'Historical/reanalysis weather; not an on-site weather station reading.',timezone:data.timezone||null,harvest_temperature_f:n(h.temperature_2m?.[i]),relative_humidity_pct:n(h.relative_humidity_2m?.[i]),precipitation_in:n(h.precipitation?.[i]),pressure_msl_hpa:n(h.pressure_msl?.[i]),cloud_cover_pct:n(h.cloud_cover?.[i]),wind_speed_mph:n(h.wind_speed_10m?.[i]),wind_direction_deg:n(h.wind_direction_10m?.[i]),temp_change_24h_f:n(h.temperature_2m?.[i])!=null&&n(h.temperature_2m?.[past(24)])!=null?+(n(h.temperature_2m[i])-n(h.temperature_2m[past(24)])).toFixed(1):null,temp_change_48h_f:n(h.temperature_2m?.[i])!=null&&n(h.temperature_2m?.[past(48)])!=null?+(n(h.temperature_2m[i])-n(h.temperature_2m[past(48)])).toFixed(1):null,pressure_change_6h_hpa:n(h.pressure_msl?.[i])!=null&&n(h.pressure_msl?.[past(6)])!=null?+(n(h.pressure_msl[i])-n(h.pressure_msl[past(6)])).toFixed(1):null,pressure_change_12h_hpa:n(h.pressure_msl?.[i])!=null&&n(h.pressure_msl?.[past(12)])!=null?+(n(h.pressure_msl[i])-n(h.pressure_msl[past(12)])).toFixed(1):null};
+    await sb.from('harvest_events').update({weather_metadata:metadata,analysis_status:'ready',analysis_error:null}).eq('id',harvestId).eq('user_id',currentUser.id);
+    return metadata;
+  }catch(err){console.warn(err);await sb.from('harvest_events').update({analysis_status:'failed',analysis_error:String(err?.message||err)}).eq('id',harvestId).eq('user_id',currentUser.id);return null;}
+}
+async function saveHarvest(){
+  if(!harvestPendingPoint||!currentUser)return;
+  const propertyId=harvestPendingPoint.propertyId; const date=$('harvestDate')?.value;
+  if(!date){$('harvestMessage').textContent='Choose the harvest date.';return;}
+  const time=$('harvestTime')?.value||'12:00'; const harvestedAt=`${date}T${time}:00`; const btn=$('harvestSaveBtn'); btn.disabled=true;
+  $('harvestMessage').textContent=harvestEditingId?'Saving changes…':'Saving harvest…';
+  try{
+    let photoPath=null; const file=$('harvestPhoto')?.files?.[0];
+    const existing=harvestEditingId?areaHarvests.find(h=>h.id===harvestEditingId):null;
+    if(file){
+      const ext=(file.name.split('.').pop()||'jpg').toLowerCase();
+      photoPath=`${currentUser.id}/${propertyId}/${crypto.randomUUID()}.${ext}`;
+      const {error:upErr}=await sb.storage.from('harvest-photos').upload(photoPath,file,{upsert:false,contentType:file.type||'image/jpeg'});
+      if(upErr)throw upErr;
+    } else if(existing) photoPath=existing.photo_path||null;
+    const row={user_id:currentUser.id,property_id:propertyId,lat:harvestPendingPoint.lat,lon:harvestPendingPoint.lon,harvested_at:harvestedAt,sex:$('harvestSex').value,deer_name:$('harvestName').value.trim()||null,antler_points:$('harvestPoints').value?Number($('harvestPoints').value):null,score:$('harvestScore').value?Number($('harvestScore').value):null,age_estimate:$('harvestAge').value?Number($('harvestAge').value):null,approach_direction:$('harvestApproachDirection').value||null,approach_notes:$('harvestApproachNotes').value.trim()||null,notes:$('harvestNotes').value.trim()||null,photo_path:photoPath,analysis_status:'pending'};
+    let harvest;
+    if(harvestEditingId){
+      const {data,error}=await sb.from('harvest_events').update({...row,updated_at:new Date().toISOString()}).eq('id',harvestEditingId).eq('user_id',currentUser.id).select('*').single();
+      if(error)throw error; harvest=data;
+      await sb.from('property_assets').update({name:row.deer_name||`${row.sex==='buck'?'Buck':'Deer'} Harvest`,lat:row.lat,lon:row.lon,metadata:{harvest_id:harvest.id}}).eq('property_id',propertyId).eq('owner_id',currentUser.id).contains('metadata',{harvest_id:harvest.id});
+    }else{
+      const {data,error}=await sb.from('harvest_events').insert(row).select('*').single(); if(error)throw error; harvest=data;
+      const {error:assetErr}=await sb.from('property_assets').insert({property_id:propertyId,owner_id:currentUser.id,asset_type:'harvest',name:row.deer_name||`${row.sex==='buck'?'Buck':'Deer'} Harvest`,lat:row.lat,lon:row.lon,metadata:{harvest_id:harvest.id}}); if(assetErr)throw assetErr;
+    }
+    $('harvestMessage').textContent='Saved. DIE is analyzing the historical weather now…';
+    await analyzeHarvestWeather(harvest.id,row.lat,row.lon,harvestedAt);
+    await loadAreaProperty(); closeHarvestModal(); $('areaPlaceMessage').textContent='Harvest metadata saved. Direction + historical weather are now part of this farm’s intelligence.';
+  }catch(err){console.error(err);$('harvestMessage').textContent=err?.message||'Could not save harvest.';}finally{btn.disabled=false;}
+}
+async function deleteHarvest(){
+  if(!harvestEditingId||!currentUser)return;
+  if(!confirm('Delete this harvest marker and its intelligence record?'))return;
+  const h=areaHarvests.find(x=>x.id===harvestEditingId);
+  try{
+    if(h?.photo_path) await sb.storage.from('harvest-photos').remove([h.photo_path]);
+    await sb.from('property_assets').delete().eq('property_id',h.property_id).eq('owner_id',currentUser.id).contains('metadata',{harvest_id:harvestEditingId});
+    const {error}=await sb.from('harvest_events').delete().eq('id',harvestEditingId).eq('user_id',currentUser.id); if(error)throw error;
+    closeHarvestModal(); await loadAreaProperty(); $('areaPlaceMessage').textContent='Harvest deleted.';
+  }catch(err){console.error(err);$('harvestMessage').textContent=err?.message||'Could not delete harvest.';}
+}
+
+function harvestWeatherSimilarity(forecast,weather){
+  if(!forecast||!weather)return null; let score=0,weights=0; const add=(w,d,scale)=>{if(Number.isFinite(d)){score+=w*Math.max(0,1-d/scale);weights+=w;}};
+  add(3,Math.abs((forecast.temperature_f??0)-(weather.harvest_temperature_f??0)),25); add(2,Math.abs((forecast.wind_speed_mph??0)-(weather.wind_speed_mph??0)),20); add(2,angleDiff(forecast.wind_direction_deg,weather.wind_direction_deg),120); add(2,Math.abs((forecast.pressure_msl_hpa??0)-(weather.pressure_msl_hpa??0)),20); add(3,Math.abs((forecast.temp_change_24h_f??0)-(weather.temp_change_24h_f??0)),20); add(2,Math.abs((forecast.pressure_change_6h_hpa??0)-(weather.pressure_change_6h_hpa??0)),10); return weights?Math.round(score/weights*100):null;
+}
+async function getPlannerForecast(property,date,time){
+  const lat=Number(property?.lat),lon=Number(property?.lon); if(!Number.isFinite(lat)||!Number.isFinite(lon)||!date)return null;
+  try{const params=new URLSearchParams({latitude:String(lat),longitude:String(lon),start_date:date,end_date:date,timezone:'auto',temperature_unit:'fahrenheit',wind_speed_unit:'mph',precipitation_unit:'inch',hourly:'temperature_2m,precipitation,pressure_msl,wind_speed_10m,wind_direction_10m'}); const r=await fetch(`https://api.open-meteo.com/v1/forecast?${params}`); if(!r.ok)return null; const data=await r.json(); const h=data.hourly||{}; const targetHour=time==='evening'?17:time==='midday'?12:7; let i=(h.time||[]).findIndex(t=>new Date(t).getHours()===targetHour); if(i<0)i=0; const prior=Math.max(0,i-6); return {temperature_f:Number(h.temperature_2m?.[i]),wind_speed_mph:Number(h.wind_speed_10m?.[i]),wind_direction_deg:Number(h.wind_direction_10m?.[i]),pressure_msl_hpa:Number(h.pressure_msl?.[i]),precipitation_in:Number(h.precipitation?.[i]),pressure_change_6h_hpa:Number(h.pressure_msl?.[i])-Number(h.pressure_msl?.[prior]),temp_change_24h_f:null};}catch{return null;}
+}
+function regionalBuckScore(county){
+  const row=dieCountyHarvest2425.find(x=>String(x.county||'').toLowerCase()===String(county||'').replace(/ county/i,'').toLowerCase()); if(!row)return null; const vals=dieCountyHarvest2425.map(x=>Number(x.bucks_per_1000_hunter_days||0)).filter(Number.isFinite).sort((a,b)=>a-b); const v=Number(row.bucks_per_1000_hunter_days||0); const rank=vals.filter(x=>x<=v).length/Math.max(1,vals.length); return Math.round(40+rank*50);
+}
+async function personalizedFarmIntel(property,date,time){
+  const {data:rows}=await sb.from('harvest_events').select('*').eq('property_id',property.id).eq('user_id',currentUser.id).eq('sex','buck').eq('analysis_status','ready'); const harvests=rows||[]; const forecast=await getPlannerForecast(property,date,time); const sims=forecast?harvests.map(h=>harvestWeatherSimilarity(forecast,h.weather_metadata||{})).filter(x=>x!=null).sort((a,b)=>b-a):[]; const farm=sims.length?Math.round(sims.slice(0,Math.min(5,sims.length)).reduce((a,b)=>a+b,0)/Math.min(5,sims.length)):null; const regional=regionalBuckScore(property.county); const support=Math.min(1,harvests.length/10); const farmWeight=.25+.5*support; const regionalWeight=1-farmWeight; const combined=farm!=null&&regional!=null?Math.round(farm*farmWeight+regional*regionalWeight):(farm??regional); return {harvests:harvests.length,farm,regional,combined,forecast,farmWeight:Math.round(farmWeight*100),regionalWeight:Math.round(regionalWeight*100)};
+}
+
+async function toggleAreaBoundary(){
+  initMapSafe();
+  const propertyId=$("areaPropertySelect")?.value;
+  if(!propertyId){$("areaPlaceMessage").textContent="Choose a property first.";return;}
+  if(!properties.some(p=>p.id===propertyId)){$("areaPlaceMessage").textContent="Shared properties are view-only.";return;}
+  if(!map){$("areaPlaceMessage").textContent="Open Area Intelligence and wait for the map to load.";return;}
+
+  areaSelectedAssetType = null;
+  document.querySelectorAll("[data-asset-type]").forEach(b=>b.classList.remove("active"));
+
+  if(!areaBoundaryMode){
+    areaBoundaryMode=true;
+    areaBoundaryPoints=[];
+    areaBoundaryGroup.clearLayers();
+    $("areaBoundaryBtn").classList.add("boundary-help");
+    $("areaBoundaryBtn").textContent="✓ Finish Boundary";
+    $("areaPlaceMessage").textContent="BOUNDARY MODE: click each corner of your property. Then click Finish Boundary.";
+    map.getContainer().style.cursor='crosshair';
+  } else {
+    if(areaBoundaryPoints.length < 3){
+      $("areaPlaceMessage").textContent="Add at least 3 boundary points before finishing.";
+      return;
+    }
+    areaBoundaryMode=false;
+    $("areaBoundaryBtn").classList.remove("boundary-help");
+    $("areaBoundaryBtn").textContent="◇ Redraw Property Boundary";
+    const boundary=[...areaBoundaryPoints];
+    const {error}=await sb.from("property_maps").upsert({
+      property_id:propertyId,
+      owner_id:currentUser.id,
+      boundary
+    },{onConflict:"property_id"});
+    if(error){
+      $("areaPlaceMessage").textContent=error.message;
+      return;
+    }
+    areaBoundaryStored=boundary;
+    areaBoundaryPoints=[];
+    map.getContainer().style.cursor='grab';
+    renderAreaMap();
+    $("areaPlaceMessage").textContent="Property boundary saved to your DIE account.";
+  }
+}
+
+
+async function areaAddProperty(){
+  const name=prompt("Property name:"); if(!name?.trim())return;
+  const {error}=await sb.from("properties").insert({user_id:currentUser.id,name:name.trim(),state:"AL"});
+  if(error){alert(error.message);return;} await refreshPrivateData(); await syncAreaPropertyControls();
+}
+
+
+function fillControls() {
+  (
+    cfg.radius_options
+    ||
+    [
+      1,
+      3,
+      5,
+      10,
+      15,
+      25,
+      50
+    ]
+  )
+  .forEach(radius => {
+    const option =
+      document.createElement("option");
+
+    option.value =
+      radius;
+
+    option.textContent =
+      radius + " miles";
+
+    if (
+      radius ===
+      (
+        cfg.default_radius_miles
+        || 5
+      )
+    ) {
+      option.selected = true;
+    }
+
+    $("radius")
+      .appendChild(option);
+  });
+
+  const groups = {};
+
+  publicLands.forEach(land => {
+    (
+      groups[land.type]
+      ??=
+      []
+    ).push(land);
+  });
+
+  Object
+    .keys(groups)
+    .sort()
+    .forEach(type => {
+      const group =
+        document.createElement(
+          "optgroup"
+        );
+
+      group.label = type;
+
+      groups[type]
+        .sort(
+          (a, b) =>
+            a.name.localeCompare(
+              b.name
+            )
+        )
+        .forEach(land => {
+          const option =
+            document.createElement(
+              "option"
+            );
+
+          option.value =
+            land.id;
+
+          option.textContent =
+            land.name;
+
+          group.appendChild(option);
+        });
+
+      $("publicLand")
+        .appendChild(group);
+    });
+}
+
+
+async function resolveSearchPoint() {
+  const landId =
+    $("publicLand").value;
+
+  if (landId) {
+    const land =
+      publicLands.find(
+        item =>
+          item.id === landId
+      );
+
+    if (
+      land.lat != null &&
+      land.lon != null
+    ) {
+      return {
+        lat:
+          Number(land.lat),
+
+        lon:
+          Number(land.lon),
+
+        label:
+          land.name
+      };
+    }
+
+    return geocode(
+      land.search_label
+      ||
+      land.name + ", Alabama"
+    );
+  }
+
+  const query =
+    $("address").value.trim();
+
+  if (!query) {
+    throw new Error(
+      "Enter an address/ZIP or select public land."
+    );
+  }
+
+  return geocode(query);
+}
+
+
+function publicLandText(
+  observation
+) {
+  if (
+    observation.nearest_public_land
+    &&
+    observation.nearest_public_land_distance_miles
+      != null
+  ) {
+    return `${Number(
+      observation.nearest_public_land_distance_miles
+    ).toFixed(2)} mi to ${observation.nearest_public_land}`;
+  }
+
+  return observation.nearest_public_land
+    ? `Near ${observation.nearest_public_land}`
+    : "Public-land distance not calculated yet";
+}
+
+
+function deerIcon() {
+  return L.divIcon({
+    className: "",
+
+    html:
+      '<div style="width:40px;height:40px;border-radius:50%;background:#152019;border:2px solid #a5be86;display:flex;align-items:center;justify-content:center;font-size:23px">🦌</div>',
+
+    iconSize:
+      [40, 40],
+
+    iconAnchor:
+      [20, 20]
+  });
+}
+
+
+function renderMapResults(
+  center
+) {
+  if (!map || !layerGroup) {
+    return;
+  }
+
+  const radius =
+    Number(
+      $("radius").value
+    );
+
+  const minAcres =
+    Number(
+      $("minAcres").value
+      || 0
+    );
+
+  const rows =
+    observations
+      .filter(
+        observation =>
+          observation.confirmed
+          === true
+          &&
+          Number(
+            observation.acres
+            || 0
+          )
+          >= minAcres
+          &&
+          Number.isFinite(
+            Number(
+              observation.lat
+            )
+          )
+          &&
+          Number.isFinite(
+            Number(
+              observation.lon
+            )
+          )
+      )
+      .map(
+        observation => ({
+          ...observation,
+
+          distance_miles:
+            miles(
+              center.lat,
+              center.lon,
+              Number(
+                observation.lat
+              ),
+              Number(
+                observation.lon
+              )
+            )
+        })
+      )
+      .filter(
+        observation =>
+          observation.distance_miles
+          <= radius
+      );
+
+  layerGroup.clearLayers();
+
+  if (searchMarker) {
+    map.removeLayer(
+      searchMarker
+    );
+  }
+
+  if (searchCircle) {
+    map.removeLayer(
+      searchCircle
+    );
+  }
+
+  searchMarker =
+    L.marker(
+      [
+        center.lat,
+        center.lon
+      ]
+    )
+    .addTo(map);
+
+  searchCircle =
+    L.circle(
+      [
+        center.lat,
+        center.lon
+      ],
+      {
+        radius:
+          radius * 1609.344
+      }
+    )
+    .addTo(map);
+
+  rows.forEach(observation => {
+    L.marker(
+      [
+        observation.lat,
+        observation.lon
+      ],
+      {
+        icon:
+          deerIcon()
+      }
+    )
+    .addTo(layerGroup)
+    .bindPopup(
+      `
+      <b>🦌 ${observation.deer_count || 1} deer confirmed</b><br>
+      ♂ ${observation.buck_count || 0} bucks ·
+      ♀ ${observation.doe_count || 0} does<br>
+      ${publicLandText(observation)}
+
+      ${
+        observation.listing_url
+          ? `<p><a href="${observation.listing_url}" target="_blank" rel="noopener">View original listing</a></p>`
+          : ""
+      }
+      `
+    );
+  });
+
+  map.fitBounds(
+    searchCircle.getBounds()
+  );
+
+  $("mObs").textContent =
+    rows.length;
+
+  $("mDeer").textContent =
+    rows.reduce(
+      (
+        total,
+        observation
+      ) =>
+        total
+        +
+        Number(
+          observation.deer_count
+          || 1
+        ),
+      0
+    );
+
+  $("mProfiles").textContent =
+    new Set(
+      rows
+        .map(
+          observation =>
+            observation.deer_id
+        )
+        .filter(Boolean)
+    ).size;
+
+  $("mHarvested").textContent =
+    rows.filter(
+      observation =>
+        [
+          "reported",
+          "verified"
+        ]
+        .includes(
+          observation.harvest_status
+        )
+    ).length;
+
+  $("status").textContent =
+    `${rows.length} confirmed observations within ${radius} miles of ${center.label}.`;
+
+  $("results").innerHTML =
+    rows.map(
+      observation => `
+        <div class="card">
+
+          <b>
+            🦌
+            ${observation.deer_count || 1}
+            deer confirmed
+          </b>
+
+          <p>
+            ♂ ${observation.buck_count || 0} bucks ·
+            ♀ ${observation.doe_count || 0} does ·
+            ${publicLandText(observation)}
+          </p>
+
+          ${
+            observation.listing_url
+              ? `<a href="${observation.listing_url}" target="_blank" rel="noopener">View original listing</a>`
+              : ""
+          }
+
+        </div>
+      `
+    )
+    .join("")
+    ||
+    '<div class="panel">No confirmed outside observations match this search.</div>';
+}
+
+
+async function doSearch() {
+  $("status").textContent =
+    "Resolving location…";
+
+  try {
+    renderMapResults(
+      await resolveSearchPoint()
+    );
+  } catch (error) {
+    $("status").textContent =
+      error.message;
+  }
+}
+
+
+/* ============================================================
+   INIT
+   ============================================================ */
+
+async function init() {
+  [
+    cfg,
+    publicLands,
+    observations,
+    outsideProfiles
+  ] =
+  await Promise.all([
+    loadJson(
+      "config.json",
+      {
+        default_radius_miles: 5,
+
+        radius_options: [
+          1,
+          3,
+          5,
+          10,
+          15,
+          25,
+          50
+        ]
+      }
+    ),
+
+    loadJson(
+      "public_lands.json",
+      []
+    ),
+
+    loadJson(
+      "observations.json",
+      []
+    ),
+
+    loadJson(
+      "deer_profiles.json",
+      []
+    )
+  ]);
+
+  dieHarvestHistory = await loadHarvestHistoryData();
+  fillControls();
+  setupTabs();
+  initHarvestHistoryControls();
+  renderOfficialHarvestRows();
+
+  $("signInBtn")
+    .addEventListener(
+      "click",
+      signIn
+    );
+
+  $("signUpBtn")
+    .addEventListener(
+      "click",
+      signUp
+    );
+
+  $("signOutBtn")
+    .addEventListener(
+      "click",
+      signOut
+    );
+
+  $("addPropertyBtn")
+    .addEventListener(
+      "click",
+      addProperty
+    );
+
+  $("addCameraBtn")
+    .addEventListener(
+      "click",
+      addCamera
+    );
+
+  $("propertySelect")
+    .addEventListener(
+      "change",
+      () => {
+        $("uploadProperty").value =
+          $("propertySelect").value;
+
+        renderCameraSelectors();
+        loadRecentPhotos();
+      }
+    );
+
+  $("uploadProperty")
+    .addEventListener(
+      "change",
+      () => {
+        renderCameraSelectors();
+        loadRecentPhotos();
+      }
+    );
+
+  $("photoUpload")
+    .addEventListener(
+      "change",
+      event => {
+        const files =
+          event.target.files;
+
+        $("uploadCount").textContent =
+          `${files.length} file${files.length === 1 ? "" : "s"} selected`;
+
+        renderSelectedPreviews(
+          files
+        );
+      }
+    );
+
+  $("processUploadBtn")
+    .addEventListener(
+      "click",
+      uploadPhotos
+    );
+  $("cameraUploadCloseBtn")?.addEventListener("click", closeCameraUploadModal);
+  $("cameraUploadCancelBtn")?.addEventListener("click", closeCameraUploadModal);
+  $("cameraUploadModal")?.addEventListener("click",(event)=>{
+    if(event.target===$("cameraUploadModal")) closeCameraUploadModal();
+  });
+
+  $("refreshPhotosBtn")
+    .addEventListener(
+      "click",
+      loadRecentPhotos
+    );
+
+  $("areaPropertySelect")?.addEventListener("change", loadAreaProperty);
+  $("harvestCloseBtn")?.addEventListener("click", closeHarvestModal);
+  $("harvestCancelBtn")?.addEventListener("click", closeHarvestModal);
+  $("harvestSaveBtn")?.addEventListener("click", saveHarvest);
+  $("harvestDeleteBtn")?.addEventListener("click", deleteHarvest);
+  $("assetMetaCloseBtn")?.addEventListener("click", closeAssetMetaModal);
+  $("assetMetaCancelBtn")?.addEventListener("click", closeAssetMetaModal);
+  $("assetMetaSaveBtn")?.addEventListener("click", saveAssetMetadata);
+  $("assetDeleteBtn")?.addEventListener("click",()=>{if(assetMetaEditing)deleteMappedAsset(assetMetaEditing.kind,assetMetaEditing.id);});
+  $("assetUploadPhotosBtn")?.addEventListener("click",()=>{if(assetMetaEditing?.kind==="camera"){const id=assetMetaEditing.id;closeAssetMetaModal();openCameraUploadModal(id);}});
+  $("assetMetaModal")?.addEventListener("click",e=>{if(e.target===$("assetMetaModal"))closeAssetMetaModal();});
+  $("areaDeletePropertyBtn")?.addEventListener("click",deleteSelectedProperty);
+  $("socialFindBtn")?.addEventListener("click",openFindHunters);
+  $("socialFindSmallBtn")?.addEventListener("click",openFindHunters);
+  $("findHuntersCloseBtn")?.addEventListener("click",closeFindHunters);
+  $("findHuntersModal")?.addEventListener("click",e=>{if(e.target===$("findHuntersModal"))closeFindHunters();});
+  $("friendSearchBtn")?.addEventListener("click",searchHunters);
+  $("friendSearchInput")?.addEventListener("keydown",e=>{if(e.key==="Enter")searchHunters();});
+  $("socialPostBtn")?.addEventListener("click",createSocialPost);
+  document.querySelectorAll("[data-feed-filter]").forEach(btn=>btn.addEventListener("click",()=>{socialFeedFilter=btn.dataset.feedFilter;document.querySelectorAll("[data-feed-filter]").forEach(b=>b.classList.toggle("active",b===btn));loadSocialFeed();}));
+
+  $("harvestPhoto")?.addEventListener("change", previewHarvestPhoto);
+  $("harvestModal")?.addEventListener("click",e=>{if(e.target===$("harvestModal"))closeHarvestModal();});
+  $("areaBoundaryBtn")?.addEventListener("click", toggleAreaBoundary);
+  $("areaAddPropertyBtn")?.addEventListener("click", areaAddProperty);
+  $("areaMyPropertiesBtn")?.addEventListener("click", () => document.querySelector('[data-tab="my-intel"]')?.click());
+  document.querySelectorAll("[data-asset-type]").forEach(btn=>btn.addEventListener("click",()=>{
+    initMapSafe();
+    if (!$('areaPropertySelect')?.value) {
+      $('areaPlaceMessage').textContent = 'Choose a property first.';
+      return;
+    }
+    areaBoundaryMode = false;
+    areaBoundaryPoints = [];
+    areaSelectedAssetType=btn.dataset.assetType;
+    document.querySelectorAll("[data-asset-type]").forEach(b=>b.classList.toggle("active",b===btn));
+    $("areaBoundaryBtn")?.classList.remove("boundary-help");
+    if ($("areaBoundaryBtn")) $("areaBoundaryBtn").textContent="◇ Draw Property Boundary";
+    $("areaPlaceMessage").textContent=`PLACEMENT MODE: click anywhere on the map to place a ${btn.dataset.assetType}.`;
+    if (map) map.getContainer().style.cursor='crosshair';
+  }));
+  $("areaSatelliteBtn")?.addEventListener("click",()=>{
+    initMapSafe();
+    if(!map || !areaSatelliteLayer) return;
+    if(areaStreetLayer && map.hasLayer(areaStreetLayer)) map.removeLayer(areaStreetLayer);
+    if(!map.hasLayer(areaSatelliteLayer)) areaSatelliteLayer.addTo(map);
+    $("areaSatelliteBtn").classList.add("active");
+    $("areaStreetBtn")?.classList.remove("active");
+    $("areaPlaceMessage").textContent = "Satellite view on. Choose an asset or draw the property boundary.";
+  });
+  $("areaStreetBtn")?.addEventListener("click",()=>{
+    initMapSafe();
+    if(!map || !areaStreetLayer) return;
+    if(areaSatelliteLayer && map.hasLayer(areaSatelliteLayer)) map.removeLayer(areaSatelliteLayer);
+    if(!map.hasLayer(areaStreetLayer)) areaStreetLayer.addTo(map);
+    $("areaStreetBtn").classList.add("active");
+    $("areaSatelliteBtn")?.classList.remove("active");
+    $("areaPlaceMessage").textContent = "Map view on. Choose an asset or draw the property boundary.";
+  });
+  $("areaBoundaryLayer")?.addEventListener("change",e=>{if(!map)return;if(e.target.checked)areaBoundaryGroup.addTo(map);else map.removeLayer(areaBoundaryGroup);});
+  $("areaAssetLayer")?.addEventListener("change",e=>{if(!map)return;if(e.target.checked)areaAssetGroup.addTo(map);else map.removeLayer(areaAssetGroup);});
+  $("areaParcelLayer")?.addEventListener("change",e=>{initMapSafe();toggleTaxParcelLayer(e.target.checked);});
+
+  $("searchBtn")
+    .addEventListener(
+      "click",
+      doSearch
+    );
+
+  $("address")
+    .addEventListener(
+      "keydown",
+      event => {
+        if (
+          event.key === "Enter"
+        ) {
+          doSearch();
+        }
+      }
+    );
+
+  $("saveUsernameBtn")?.addEventListener("click",()=>saveProfile(true));
+  $("saveProfileBtn")?.addEventListener("click",()=>saveProfile(false));
+  $("friendSearchBtn")?.addEventListener("click",searchFriend);
+  $("shareProperty")?.addEventListener("change",loadShareStands);
+  $("shareAccessBtn")?.addEventListener("click",shareAccess);
+  $("huntTypePrivate")?.addEventListener("click", () => setPlannerHuntType("private"));
+  $("huntTypePublic")?.addEventListener("click", () => setPlannerHuntType("public"));
+  $("plannerAnyDeerBtn")?.addEventListener("click", () => setPlannerTargetMode("any"));
+  $("plannerTargetBuckBtn")?.addEventListener("click", () => setPlannerTargetMode("buck"));
+  $("plannerProperty")?.addEventListener("change", refreshPlannerDeer);
+  $("plannerPublicLand")?.addEventListener("change", updatePublicLandMap);
+  $("plannerHotelRadius")?.addEventListener("change", updatePublicLandMap);
+  $("publicMapStreetBtn")?.addEventListener("click", () => {
+    initPublicHuntMap();
+    if (!publicHuntMap || !publicHuntStreetLayer) return;
+    if (publicHuntSatelliteLayer && publicHuntMap.hasLayer(publicHuntSatelliteLayer)) publicHuntMap.removeLayer(publicHuntSatelliteLayer);
+    if (!publicHuntMap.hasLayer(publicHuntStreetLayer)) publicHuntStreetLayer.addTo(publicHuntMap);
+    $("publicMapStreetBtn")?.classList.add("active");
+    $("publicMapSatelliteBtn")?.classList.remove("active");
+  });
+  $("publicMapSatelliteBtn")?.addEventListener("click", () => {
+    initPublicHuntMap();
+    if (!publicHuntMap || !publicHuntSatelliteLayer) return;
+    if (publicHuntStreetLayer && publicHuntMap.hasLayer(publicHuntStreetLayer)) publicHuntMap.removeLayer(publicHuntStreetLayer);
+    if (!publicHuntMap.hasLayer(publicHuntSatelliteLayer)) publicHuntSatelliteLayer.addTo(publicHuntMap);
+    $("publicMapSatelliteBtn")?.classList.add("active");
+    $("publicMapStreetBtn")?.classList.remove("active");
+  });
+  $("buildHuntPlanBtn")?.addEventListener("click", buildHuntPlan);
+
+  $("profilePrevBtn")?.addEventListener("click",()=>moveProfile(-1));
+  $("profileNextBtn")?.addEventListener("click",()=>moveProfile(1));
+  $("profileSort")?.addEventListener("change",()=>{ profileBrowserIndex=0; renderProfileShowcase(); });
+  $("editCurrentProfileBtn")?.addEventListener("click",()=>{ if(currentProfile) renameDeer(currentProfile.id,currentProfile.nickname||""); });
+  $("compareProfilesBtn")?.addEventListener("click",()=>{ $("profileComparePanel")?.classList.remove("hidden"); populateCompareSelectors(); });
+  $("closeCompareBtn")?.addEventListener("click",()=>$("profileComparePanel")?.classList.add("hidden"));
+  $("compareProfileA")?.addEventListener("change",renderProfileComparison);
+  $("compareProfileB")?.addEventListener("change",renderProfileComparison);
+
+  if (
+    initSupabase()
+  ) {
+    await restoreSession();
+  }
+}
+
+
+window.renameDeer =
+  renameDeer;
+
+
+document.addEventListener(
+  "DOMContentLoaded",
+  init
+);
+
+window.sendFriendRequest=sendFriendRequest; window.respondFriend=respondFriend;
+
+
+
+/* ============================================================
+   HARVEST HISTORY + WEATHER INTELLIGENCE
+   ============================================================ */
+const DIE_ALABAMA_COUNTIES = [
+  "Autauga","Baldwin","Barbour","Bibb","Blount","Bullock","Butler","Calhoun","Chambers","Cherokee",
+  "Chilton","Choctaw","Clarke","Clay","Cleburne","Coffee","Colbert","Conecuh","Coosa","Covington",
+  "Crenshaw","Cullman","Dale","Dallas","DeKalb","Elmore","Escambia","Etowah","Fayette","Franklin",
+  "Geneva","Greene","Hale","Henry","Houston","Jackson","Jefferson","Lamar","Lauderdale","Lawrence",
+  "Lee","Limestone","Lowndes","Macon","Madison","Marengo","Marion","Marshall","Mobile","Monroe",
+  "Montgomery","Morgan","Perry","Pickens","Pike","Randolph","Russell","Shelby","St. Clair","Sumter",
+  "Talladega","Tallapoosa","Tuscaloosa","Walker","Washington","Wilcox","Winston"
+];
+
+let dieHarvestHistory = [];
+let dieHarvestOfficial = [];
+let dieCountyHarvest2425 = [];
+
+function initHarvestHistoryControls(){
+  const county = $("historyCounty");
+  if(county && !county.dataset.ready){
+    county.innerHTML = DIE_ALABAMA_COUNTIES.map(c => `<option value="${esc(c)}"${c==="Jackson"?" selected":""}>${esc(c)} County</option>`).join("");
+    county.dataset.ready = "1";
+  }
+  $("historyRefreshBtn")?.addEventListener("click", renderHarvestHistory);
+  $("historyCounty")?.addEventListener("change", ()=>{renderHarvestHistory();renderOfficialHarvestRows();});
+  $("historySeason")?.addEventListener("change", renderHarvestHistory);
+  $("historyLand")?.addEventListener("change", renderHarvestHistory);
+}
+
+async function loadHarvestHistoryData(){
+  try{
+    const res = await fetch(`alabama_harvest_history.json?v=16`, {cache:"no-store"});
+    if(!res.ok) return [];
+    const data = await res.json();
+    dieHarvestOfficial = Array.isArray(data?.official_summaries) ? data.official_summaries : [];
+    dieCountyHarvest2425 = Array.isArray(data?.county_estimates) ? data.county_estimates : [];
+    renderOfficialHarvestRows();
+    return Array.isArray(data?.game_check_daily?.records) ? data.game_check_daily.records : [];
+  }catch(err){
+    console.warn("Harvest history dataset could not be loaded", err);
+    dieHarvestOfficial = [];
+    dieCountyHarvest2425 = [];
+    renderOfficialHarvestRows();
+    return [];
+  }
+}
+
+function renderOfficialHarvestRows(){
+  const el=$("historyOfficialRows");
+  if(!el) return;
+  const county=$("historyCounty")?.value||"Jackson";
+  const r=dieCountyHarvest2425.find(x=>String(x.county).toLowerCase()===county.toLowerCase());
+  if(!r){
+    el.innerHTML=`<div class="history-empty">No verified 2024-25 county estimate loaded for ${esc(county)} County.</div>`;
+    return;
+  }
+  const total=Number(r.total_estimate||0);
+  el.innerHTML=`
+    <div class="history-row"><span>2024-25</span><span>${esc(county)} County estimated bucks</span><strong>${Number(r.bucks_estimate||0).toLocaleString()}</strong></div>
+    <div class="history-row"><span>2024-25</span><span>${esc(county)} County estimated does</span><strong>${Number(r.does_estimate||0).toLocaleString()}</strong></div>
+    <div class="history-row"><span>2024-25</span><span>${esc(county)} County estimated total deer</span><strong>${total.toLocaleString()}</strong></div>
+    <div class="history-row"><span>Effort</span><span>Estimated deer hunting days</span><strong>${Number(r.hunter_days_estimate||0).toLocaleString()}</strong></div>
+    <div class="history-row"><span>Rate</span><span>Estimated bucks per 1,000 hunter-days</span><strong>${Number(r.bucks_per_1000_hunter_days||0).toFixed(2)}</strong></div>
+    <div class="history-row"><span>Rate</span><span>Estimated deer per 1,000 hunter-days</span><strong>${Number(r.deer_per_1000_hunter_days||0).toFixed(2)}</strong></div>`;
+}
+
+function fmtHistoryDate(v){
+  if(!v) return "—";
+  const d = new Date(`${v}T12:00:00`);
+  return Number.isNaN(d.getTime()) ? v : d.toLocaleDateString(undefined,{month:"short",day:"numeric"});
+}
+
+function renderHarvestChart(records){
+  const chart = $("historyHarvestChart");
+  if(!chart) return;
+  if(!records.length){
+    chart.innerHTML = `<div class="history-empty" style="width:100%">No daily Game Check records are loaded for this selection yet.</div>`;
+    return;
+  }
+  const daily = new Map();
+  records.forEach(r=>{
+    const key=r.date||"";
+    if(!key) return;
+    const cur=daily.get(key)||{total:0,bucks:0};
+    cur.total += Number(r.total||r.deer||0);
+    cur.bucks += Number(r.bucks||r.antlered||0);
+    daily.set(key,cur);
+  });
+  const rows=[...daily.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
+  const max=Math.max(1,...rows.map(([,v])=>v.bucks||v.total));
+  chart.innerHTML=rows.map(([date,v])=>{
+    const value=v.bucks||v.total;
+    const h=Math.max(3,Math.round((value/max)*155));
+    return `<div class="harvest-bar-wrap" title="${esc(date)}: ${value} reported ${v.bucks?"bucks":"deer"}"><b>${value}</b><div class="harvest-bar" style="height:${h}px"></div><small>${fmtHistoryDate(date)}</small></div>`;
+  }).join("");
+}
+
+function renderWeatherHistory(records){
+  const el=$("historyWeatherRows");
+  if(!el) return;
+  const withWeather=records.filter(r=>r.weather && (r.bucks||r.total||r.deer));
+  if(!withWeather.length){
+    el.innerHTML=`<div class="history-empty">Historical weather correlation will populate once daily harvest records are paired with weather observations.</div>`;
+    return;
+  }
+  const top=[...withWeather].sort((a,b)=>Number(b.bucks||b.total||0)-Number(a.bucks||a.total||0)).slice(0,5);
+  el.innerHTML=top.map(r=>{
+    const w=r.weather||{};
+    const temp=w.temp_f!=null?`${Math.round(w.temp_f)}°F`:"—";
+    const wind=w.wind_mph!=null?`${Math.round(w.wind_mph)} mph`:"—";
+    const pressure=w.pressure_inhg!=null?`${Number(w.pressure_inhg).toFixed(2)} inHg`:"—";
+    return `<div class="history-row"><span>${fmtHistoryDate(r.date)}</span><span>${temp} • ${esc(w.wind_dir||"Wind")} ${wind} • ${pressure}</span><strong>${Number(r.bucks||r.total||0)} harvests</strong></div>`;
+  }).join("");
+}
+
+function renderHarvestHistory(){
+  initHarvestHistoryControls();
+  const county=$("historyCounty")?.value||"Jackson";
+  const season=$("historySeason")?.value||"all";
+  const land=$("historyLand")?.value||"all";
+
+  const survey2425=dieCountyHarvest2425.find(x=>String(x.county||"").toLowerCase()===county.toLowerCase());
+
+  const filtered=dieHarvestHistory.filter(r=>{
+    const countyOk=String(r.county||"").toLowerCase()===county.toLowerCase();
+    const seasonOk=season==="all" || String(r.season||"")===season;
+    const landOk=land==="all" || String(r.land||"").toLowerCase()===land;
+    return countyOk && seasonOk && landOk;
+  });
+
+  const total=filtered.reduce((s,r)=>s+Number(r.total||r.deer||0),0);
+  const bucks=filtered.reduce((s,r)=>s+Number(r.bucks||r.antlered||0),0);
+
+  const daily=new Map();
+  filtered.forEach(r=>{
+    if(!r.date) return;
+    daily.set(r.date,(daily.get(r.date)||0)+Number(r.bucks||r.total||r.deer||0));
+  });
+  const peak=[...daily.entries()].sort((a,b)=>b[1]-a[1])[0];
+
+  if($("historyChartTitle")) $("historyChartTitle").textContent=`${county} County reported harvest by day`;
+  if($("historyTotal")) $("historyTotal").textContent=filtered.length ? total.toLocaleString() : (survey2425 ? Number(survey2425.total_estimate).toLocaleString() : "—");
+  if($("historyBucks")) $("historyBucks").textContent=filtered.length ? bucks.toLocaleString() : (survey2425 ? Number(survey2425.bucks_estimate).toLocaleString() : "—");
+  if($("historyPeakDay")) $("historyPeakDay").textContent=peak ? fmtHistoryDate(peak[0]) : "—";
+  if($("historyPeakCount")) $("historyPeakCount").textContent=peak ? `${peak[1]} reported harvests` : "Needs daily records";
+  if($("historyWeatherMatch")) $("historyWeatherMatch").textContent=filtered.some(r=>r.weather) ? "Ready" : "—";
+  if($("historyTotalSub")) $("historyTotalSub").textContent=filtered.length ? `${filtered.length} daily Game Check records` : (survey2425 ? "Official 2024-25 survey estimate" : "Selected history");
+
+  const status=$("historyDataStatus");
+  if(status){
+    status.textContent=filtered.length
+      ? `Showing verified date-level ${county} County Game Check records.`
+      : `${county} County: official 2024-25 harvest and hunter-day estimates are loaded. ADCNR Game Check does record harvest date + county, but its legacy public daily-report pages now redirect after the 2026 system migration. DINR has not retrieved a legitimate daily export, so daily weather correlation remains disabled rather than inventing records.`;
+  }
+
+  renderOfficialHarvestRows();
+  renderHarvestChart(filtered);
+  renderWeatherHistory(filtered);
+}
+
+
+/* DIE dashboard navigation helpers */
+document.addEventListener("click", (event) => {
+  const shared = event.target.closest("[data-open-shared-property]");
+  if(shared){
+    openSharedProperty(shared.dataset.openSharedProperty);
+    return;
+  }
+
+  const jump = event.target.closest("[data-tab-jump]");
+  if (jump) {
+    const target = jump.dataset.tabJump;
+    document.querySelector(`.app-tab[data-tab="${target}"]`)?.click();
+  }
+
+  const workspace = event.target.closest("[data-workspace]");
+  if (workspace) {
+    const drawer = document.getElementById("workspaceDrawer");
+    if (drawer) {
+      drawer.open = true;
+      setTimeout(() => drawer.scrollIntoView({behavior:"smooth", block:"start"}), 20);
+    }
+  }
+
+  if (event.target.closest("#addDataTopBtn")) {
+    document.querySelector('.app-tab[data-tab="area-intel"]')?.click();
+  }
+
+  if (event.target.closest("#editCurrentProfileBtnLeft")) {
+    document.getElementById("editCurrentProfileBtn")?.click();
+  }
+
+  const tabWithScroll = event.target.closest(".app-tab[data-scroll]");
+  if (tabWithScroll) {
+    setTimeout(() => document.getElementById("accountSettingsCard")?.scrollIntoView({behavior:"smooth",block:"center"}), 40);
+  }
+
+  const sideAction = event.target.closest(".side-action");
+  if (sideAction?.dataset.action === "activity") {
+    document.querySelector('.app-tab[data-tab="my-intel"]')?.click();
+    const drawer = document.getElementById("workspaceDrawer");
+    if (drawer) { drawer.open = true; setTimeout(() => drawer.scrollIntoView({behavior:"smooth",block:"start"}),30); }
+  }
+});
+
+
+/* ============================================================
+   HUNT PLANNER
+   ============================================================ */
+function setPlannerHuntType(type) {
+  plannerHuntType = type === "public" ? "public" : "private";
+  $("huntTypePrivate")?.classList.toggle("active", plannerHuntType === "private");
+  $("huntTypePublic")?.classList.toggle("active", plannerHuntType === "public");
+  $("plannerPrivateFields")?.classList.toggle("hidden", plannerHuntType !== "private");
+  $("plannerPublicFields")?.classList.toggle("hidden", plannerHuntType !== "public");
+  $("publicHuntMapSection")?.classList.toggle("hidden", plannerHuntType !== "public");
+
+  if ($("plannerControlsTitle")) {
+    $("plannerControlsTitle").textContent = plannerHuntType === "private" ? "Private Property Hunt" : "Public Land Hunt";
+  }
+  if ($("plannerTitle")) {
+    $("plannerTitle").textContent = plannerHuntType === "private" ? "Choose a private property to start" : "Choose public land to start";
+  }
+  if ($("plannerSummary")) {
+    $("plannerSummary").textContent = plannerHuntType === "private"
+      ? "DINR will use your property layout, deer profiles and sightings to organize the hunt."
+      : "Choose public land to see it on the map, review nearby hotels, and organize the hunt.";
+  }
+  if ($("plannerCallout")) {
+    $("plannerCallout").textContent = plannerHuntType === "private"
+      ? "Choose your property, decide whether you are targeting a buck, then build the plan."
+      : "Choose public land, decide whether you are targeting a buck, then build the plan. Nearby hotels will appear below.";
+  }
+
+  refreshPlannerDeer();
+  if (plannerHuntType === "public") {
+    setTimeout(() => {
+      initPublicHuntMap();
+      publicHuntMap?.invalidateSize();
+      updatePublicLandMap();
+    }, 40);
+  }
+}
+
+function setPlannerTargetMode(mode) {
+  plannerTargetMode = mode === "buck" ? "buck" : "any";
+  $("plannerAnyDeerBtn")?.classList.toggle("active", plannerTargetMode === "any");
+  $("plannerTargetBuckBtn")?.classList.toggle("active", plannerTargetMode === "buck");
+  $("plannerDeerWrap")?.classList.toggle("hidden", plannerTargetMode !== "buck");
+  if (plannerTargetMode !== "buck" && $("plannerDeer")) $("plannerDeer").value = "";
+}
+
+function refreshPlannerOptions() {
+  const propertySelect = $("plannerProperty");
+  const publicLandSelect = $("plannerPublicLand");
+  const deerSelect = $("plannerDeer");
+  if (!propertySelect || !deerSelect) return;
+
+  const currentProperty = propertySelect.value;
+  propertySelect.innerHTML = '<option value="">Choose one of your properties…</option>' +
+    (properties || []).map(p => `<option value="${p.id}">${esc(p.name || p.property_name || "Property")}</option>`).join("");
+  if (currentProperty) propertySelect.value = currentProperty;
+
+  if (publicLandSelect) {
+    const currentLand = publicLandSelect.value;
+    const groups = {};
+    (publicLands || []).forEach(land => ((groups[land.type || "Public Land"] ??= []).push(land)));
+    publicLandSelect.innerHTML = '<option value="">Choose public land…</option>';
+    Object.keys(groups).sort().forEach(type => {
+      const group = document.createElement("optgroup");
+      group.label = type;
+      groups[type].sort((a,b) => (a.name || "").localeCompare(b.name || "")).forEach(land => {
+        const option = document.createElement("option");
+        option.value = land.id;
+        option.textContent = land.name;
+        group.appendChild(option);
+      });
+      publicLandSelect.appendChild(group);
+    });
+    if (currentLand) publicLandSelect.value = currentLand;
+  }
+
+  refreshPlannerDeer();
+  if ($("plannerDate") && !$("plannerDate").value) {
+    $("plannerDate").value = new Date().toISOString().slice(0,10);
+  }
+  setPlannerHuntType(plannerHuntType);
+  setPlannerTargetMode(plannerTargetMode);
+}
+
+function refreshPlannerDeer() {
+  const deerSelect = $("plannerDeer");
+  if (!deerSelect) return;
+
+  const propertyId = plannerHuntType === "private" ? ($("plannerProperty")?.value || "") : "";
+  let list = deerProfiles || [];
+  if (propertyId) list = list.filter(d => d.property_id === propertyId);
+
+  deerSelect.innerHTML = '<option value="">Choose target buck…</option>' + list.map(d =>
+    `<option value="${d.id}">${esc(d.nickname || d.deer_code || "Buck")}</option>`
+  ).join("");
+}
+
+function initPublicHuntMap() {
+  const container = $("publicHuntMap");
+  if (!container || typeof L === "undefined") return;
+  if (publicHuntMap) return;
+
+  publicHuntMap = L.map(container, { zoomControl: true, attributionControl: true }).setView([32.8, -86.8], 7);
+  publicHuntStreetLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "&copy; OpenStreetMap contributors"
+  });
+  publicHuntSatelliteLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+    maxZoom: 19,
+    attribution: "Tiles &copy; Esri"
+  });
+  publicHuntStreetLayer.addTo(publicHuntMap);
+  publicHuntMarkerGroup = L.layerGroup().addTo(publicHuntMap);
+}
+
+function getLandLatLon(land) {
+  const lat = Number(land?.lat ?? land?.latitude ?? land?.center_lat ?? land?.centerLat);
+  const lon = Number(land?.lon ?? land?.lng ?? land?.longitude ?? land?.center_lon ?? land?.centerLng);
+  if (Number.isFinite(lat) && Number.isFinite(lon)) return { lat, lon };
+  return null;
+}
+
+async function geocodePublicLand(land) {
+  const direct = getLandLatLon(land);
+  if (direct) return direct;
+  const query = encodeURIComponent(`${land?.name || "public hunting land"}, Alabama`);
+  const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${query}`, {
+    headers: { "Accept": "application/json" }
+  });
+  if (!response.ok) throw new Error("Could not locate this public hunting area on the map.");
+  const rows = await response.json();
+  const row = rows?.[0];
+  if (!row) throw new Error("No map location was found for this public hunting area.");
+  return { lat: Number(row.lat), lon: Number(row.lon) };
+}
+
+async function fetchNearbyHotels(lat, lon, radiusMeters = 40233.6) {
+  const query = `[out:json][timeout:20];(node[\"tourism\"=\"hotel\"](around:${radiusMeters},${lat},${lon});way[\"tourism\"=\"hotel\"](around:${radiusMeters},${lat},${lon});relation[\"tourism\"=\"hotel\"](around:${radiusMeters},${lat},${lon});node[\"tourism\"=\"motel\"](around:${radiusMeters},${lat},${lon});way[\"tourism\"=\"motel\"](around:${radiusMeters},${lat},${lon}););out center tags 30;`;
+  const response = await fetch("https://overpass-api.de/api/interpreter", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+    body: "data=" + encodeURIComponent(query)
+  });
+  if (!response.ok) throw new Error("Nearby hotel search is temporarily unavailable.");
+  const payload = await response.json();
+  return (payload?.elements || []).map(item => ({
+    id: `${item.type}-${item.id}`,
+    name: item.tags?.name || item.tags?.brand || "Hotel",
+    lat: Number(item.lat ?? item.center?.lat),
+    lon: Number(item.lon ?? item.center?.lon),
+    address: [item.tags?.["addr:housenumber"], item.tags?.["addr:street"], item.tags?.["addr:city"]].filter(Boolean).join(" "),
+    phone: item.tags?.phone || item.tags?.["contact:phone"] || "",
+    website: item.tags?.website || item.tags?.["contact:website"] || ""
+  })).filter(h => Number.isFinite(h.lat) && Number.isFinite(h.lon));
+}
+
+function distanceMiles(lat1, lon1, lat2, lon2) {
+  const R = 3958.7613;
+  const dLat = rad(lat2-lat1);
+  const dLon = rad(lon2-lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(rad(lat1))*Math.cos(rad(lat2))*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(a));
+}
+
+function renderHotels(hotels, center, radiusMiles) {
+  if (!$("hotelResults") || !$("hotelCount")) return;
+  const sorted = hotels.map(h => ({...h, miles: distanceMiles(center.lat, center.lon, h.lat, h.lon)})).sort((a,b)=>a.miles-b.miles).slice(0,12);
+  $("hotelCount").textContent = String(sorted.length);
+  if (!sorted.length) {
+    $("hotelResults").innerHTML = `<p class="muted">No hotel or motel markers were returned within ${radiusMiles} miles. Try extending the range.</p>`;
+    return;
+  }
+  $("hotelResults").innerHTML = sorted.map(h => `
+    <button class="hotel-result" type="button" data-hotel-lat="${h.lat}" data-hotel-lon="${h.lon}">
+      <span><strong>${esc(h.name)}</strong><small>${h.address ? esc(h.address) + " · " : ""}${h.miles.toFixed(1)} mi away</small></span>
+      <span>→</span>
+    </button>`).join("");
+  $("hotelResults").querySelectorAll(".hotel-result").forEach(btn => btn.addEventListener("click", () => {
+    const lat = Number(btn.dataset.hotelLat); const lon = Number(btn.dataset.hotelLon);
+    if (publicHuntMap && Number.isFinite(lat) && Number.isFinite(lon)) publicHuntMap.setView([lat,lon], 14);
+  }));
+}
+
+async function updatePublicLandMap() {
+  if (plannerHuntType !== "public") return;
+  initPublicHuntMap();
+  const landId = $("plannerPublicLand")?.value || "";
+  const land = landId ? (publicLands || []).find(l => String(l.id) === String(landId)) : null;
+  if (!land) {
+    if ($("publicHuntMapStatus")) $("publicHuntMapStatus").textContent = "Choose a public hunting area to load the map and nearby lodging.";
+    if ($("hotelResults")) $("hotelResults").innerHTML = '<p class="muted">Select public land to search for hotels nearby.</p>';
+    if ($("hotelCount")) $("hotelCount").textContent = "0";
+    return;
+  }
+
+  const radiusMiles = Math.max(5, Number($("plannerHotelRadius")?.value || 25));
+  const radiusMeters = radiusMiles * 1609.344;
+
+  $("publicHuntMapTitle").textContent = `${land.name} + Nearby Hotels`;
+  $("publicHuntMapStatus").textContent = "Locating the hunting area…";
+  $("hotelResults").innerHTML = '<p class="muted">Searching for nearby hotels…</p>';
+  $("hotelCount").textContent = "…";
+
+  try {
+    const center = await geocodePublicLand(land);
+    publicHuntMarkerGroup?.clearLayers();
+    publicHuntMap?.setView([center.lat, center.lon], 11);
+    publicHuntLandMarker = L.circleMarker([center.lat, center.lon], {
+      radius: 9, color: "#ff7a00", weight: 3, fillColor: "#ff7a00", fillOpacity: .25
+    }).bindPopup(`<strong>${esc(land.name)}</strong><br>Selected public hunting area`).addTo(publicHuntMarkerGroup);
+
+    $("publicHuntMapStatus").textContent = `Showing the selected public hunting area and lodging within ${radiusMiles} miles.`;
+
+    let hotels = [];
+    try { hotels = await fetchNearbyHotels(center.lat, center.lon, radiusMeters); }
+    catch (hotelError) {
+      console.warn(hotelError);
+      $("hotelResults").innerHTML = '<p class="muted">Hotel search could not load right now. The public-land map is still available.</p>';
+      $("hotelCount").textContent = "0";
+      return;
+    }
+
+    hotels.forEach(h => {
+      L.marker([h.lat, h.lon], { title: h.name })
+        .bindPopup(`<strong>${esc(h.name)}</strong>${h.address ? `<br>${esc(h.address)}` : ""}`)
+        .addTo(publicHuntMarkerGroup);
+    });
+
+    if (hotels.length && publicHuntMap) {
+      const points = [[center.lat, center.lon], ...hotels.map(h => [h.lat, h.lon])];
+      publicHuntMap.fitBounds(points, { padding: [35, 35], maxZoom: 12 });
+    }
+
+    renderHotels(hotels, center, radiusMiles);
+  } catch (error) {
+    console.error(error);
+    $("publicHuntMapStatus").textContent = error?.message || "Could not load this public hunting area.";
+    $("hotelResults").innerHTML = '<p class="muted">Nearby lodging will appear here when the selected area can be located.</p>';
+    $("hotelCount").textContent = "0";
+  }
+}
+
+async function buildHuntPlan() {
+  const propertyId = plannerHuntType === "private" ? ($("plannerProperty")?.value || "") : "";
+  const publicLandId = plannerHuntType === "public" ? ($("plannerPublicLand")?.value || "") : "";
+  if (plannerHuntType === "private" && !propertyId) {
+    $("plannerTitle").textContent = "Choose a private property";
+    $("plannerCallout").textContent = "Choose one of your properties before building the hunt plan.";
+    return;
+  }
+  if (plannerHuntType === "public" && !publicLandId) {
+    $("plannerTitle").textContent = "Choose public land";
+    $("plannerCallout").textContent = "Choose an Alabama public hunting area before building the hunt plan.";
+    return;
+  }
+
+  const property = propertyId ? (properties || []).find(p => String(p.id) === String(propertyId)) : null;
+  const publicLand = publicLandId ? (publicLands || []).find(l => String(l.id) === String(publicLandId)) : null;
+  const deerId = plannerTargetMode === "buck" ? ($("plannerDeer")?.value || "") : "";
+  const deer = deerId ? (deerProfiles || []).find(d => String(d.id) === String(deerId)) : null;
+  if (plannerTargetMode === "buck" && !deer) {
+    $("plannerTitle").textContent = "Choose your target buck";
+    $("plannerCallout").textContent = "You selected a target-buck hunt. Choose the buck you want DIE to center the plan around.";
+    return;
+  }
+
+  const time = $("plannerTime")?.value || "morning";
+  const date = $("plannerDate")?.value || "your selected date";
+  const locationName = property?.name || property?.property_name || publicLand?.name || "Hunt location";
+  const label = deer ? (deer.nickname || deer.deer_code || "Target buck") : "General movement";
+  const sightings = deer?.sighting_count ?? deer?.sightings_count ?? 0;
+  const lastSeen = deer?.last_seen ? new Date(deer.last_seen).toLocaleDateString() : "Not available";
+
+  $("plannerTitle").textContent = `${locationName} — ${time.replace("-", " ")} hunt`;
+  $("plannerSummary").textContent = plannerHuntType === "private"
+    ? (deer ? `Private-property plan centered on ${label}, using its stored sightings and the layout you built in Area Intelligence.` : "Private-property plan centered on overall deer movement and the layout you built in Area Intelligence.")
+    : (deer ? `Public-land plan centered on ${label}. Use the map below for the hunt location and nearby lodging logistics.` : `Public-land plan for ${locationName}. Use the map below for the hunting area and nearby lodging logistics.`);
+  $("plannerTarget").textContent = deer ? label : "Any deer";
+  $("plannerSightings").textContent = deer ? String(sightings) : "—";
+  $("plannerLastSeen").textContent = deer ? lastSeen : "—";
+  $("plannerCallout").textContent = plannerHuntType === "private"
+    ? (deer
+        ? `For ${date}, use Area Intelligence to compare ${label}'s recent camera locations against your stands, feeders, scrapes and access routes before the ${time} sit.`
+        : `For ${date}, use Area Intelligence to choose the ${time} setup that best matches recent camera activity, stands, feeders, scrapes and access routes.`)
+    : (deer
+        ? `For ${date}, center the ${time} plan on ${label}. Review the selected public-land map below and use the lodging panel to organize the trip.`
+        : `For ${date}, review access and terrain around ${locationName} for the ${time} hunt. Nearby hotels are shown below to help organize the trip.`);
+
+  if(plannerHuntType === "private" && property){
+    try{
+      const intel=await personalizedFarmIntel(property,date,time);
+      if(intel.combined!=null){
+        const farmText=intel.farm!=null?`Farm-weather match ${intel.farm}/100 from ${intel.harvests} analyzed buck harvest${intel.harvests===1?'':'s'}`:`Farm history still building (${intel.harvests} analyzed buck harvests)`;
+        const regionalText=intel.regional!=null?`${String(property.county||'County').replace(/ County$/i,'')} regional baseline ${intel.regional}/100`:'Regional baseline unavailable';
+        $("plannerCallout").innerHTML=`<strong>DINR Personalized Hunt Index: ${intel.combined}/100</strong><div class="intel-score-row"><span>${farmText}</span><span>${regionalText}</span><span>Current weighting: ${intel.farmWeight}% farm / ${intel.regionalWeight}% regional</span></div><div class="small muted" style="margin-top:8px">Experimental decision support: combines your farm harvest/weather history with official 2024-25 county harvest-effort intelligence. More confirmed farm harvests gradually increase farm-specific weighting.</div>`;
+      }
+    }catch(err){console.warn('Personalized farm intelligence unavailable',err);}
+  }
+}
