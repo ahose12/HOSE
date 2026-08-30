@@ -27,6 +27,9 @@ let areaCameras = [];
 let areaDbAssets = [];
 let areaBoundaryStored = [];
 let areaCameraPhotoCache = new Map();
+let areaHarvests = [];
+let harvestPendingPoint = null;
+let harvestPhotoUrlCache = new Map();
 
 let plannerHuntType = "private";
 let plannerTargetMode = "any";
@@ -1710,7 +1713,7 @@ function toggleTaxParcelLayer(enabled){
 }
 
 function assetMeta(type){
-  return ({camera:["📷","#4d91ff"],stand:["♜","#71c837"],feeder:["▾","#ff7900"],scrape:["♨","#ef4444"],foodplot:["♧","#71c837"],water:["◆","#9b6cff"],shootinghouse:["⌂","#22c7c7"],trail:["⌁","#d89a4a"],other:["＋","#aaa"]})[type] || ["＋","#aaa"];
+  return ({camera:["📷","#4d91ff"],stand:["♜","#71c837"],feeder:["▾","#ff7900"],scrape:["♨","#ef4444"],foodplot:["♧","#71c837"],water:["◆","#9b6cff"],shootinghouse:["⌂","#22c7c7"],trail:["⌁","#d89a4a"],harvest:["🦌","#ff7900"],other:["＋","#aaa"]})[type] || ["＋","#aaa"];
 }
 function areaMarkerIcon(type){ const [icon,color]=assetMeta(type); return L.divIcon({className:"",iconSize:[36,36],iconAnchor:[18,34],html:`<div class="die-map-marker" style="color:${color}"><span>${icon}</span></div>`}); }
 
@@ -1732,15 +1735,16 @@ async function syncAreaPropertyControls(preferredId=null){
 async function loadAreaProperty(){
   const propertyId=$("areaPropertySelect")?.value;
   if(!propertyId){
-    areaStands=[]; areaCameras=[]; areaDbAssets=[]; areaBoundaryStored=[]; areaCameraPhotoCache.clear();
+    areaStands=[]; areaCameras=[]; areaDbAssets=[]; areaBoundaryStored=[]; areaHarvests=[]; areaCameraPhotoCache.clear(); harvestPhotoUrlCache.clear();
     $("areaPlaceMessage").textContent="Select a property to begin."; renderAreaMap(); return;
   }
 
-  const [standsRes,camsRes,assetsRes,mapRes]=await Promise.all([
+  const [standsRes,camsRes,assetsRes,mapRes,harvestRes]=await Promise.all([
     sb.from("stands").select("*").eq("property_id",propertyId).order("name"),
     sb.from("cameras").select("*").eq("property_id",propertyId).order("name"),
     sb.from("property_assets").select("*").eq("property_id",propertyId).order("created_at"),
-    sb.from("property_maps").select("boundary").eq("property_id",propertyId).maybeSingle()
+    sb.from("property_maps").select("boundary").eq("property_id",propertyId).maybeSingle(),
+    sb.from("harvest_events").select("*").eq("property_id",propertyId).order("harvested_at",{ascending:false})
   ]);
 
   areaStands=standsRes.data||[];
@@ -1749,6 +1753,12 @@ async function loadAreaProperty(){
     id:a.id, refId:null, type:a.asset_type, name:a.name, lat:+a.lat, lon:+a.lon
   }));
   areaBoundaryStored=Array.isArray(mapRes.data?.boundary)?mapRes.data.boundary:[];
+  areaHarvests=harvestRes.data||[];
+  harvestPhotoUrlCache.clear();
+  await Promise.all(areaHarvests.filter(h=>h.photo_path).map(async h=>{
+    const {data:signed}=await sb.storage.from("harvest-photos").createSignedUrl(h.photo_path,600);
+    if(signed?.signedUrl) harvestPhotoUrlCache.set(h.id,signed.signedUrl);
+  }));
   await loadAreaCameraPhotos(propertyId);
   renderAreaMap();
 }
@@ -1792,10 +1802,17 @@ function renderAreaMap(){
   areaStands.forEach(st=>{
     if(st.lat!=null&&st.lon!=null) assets.push({id:`stand-${st.id}`,refId:st.id,type:"stand",name:st.name,lat:+st.lat,lon:+st.lon});
   });
+  areaHarvests.forEach(h=>{
+    if(h.lat!=null&&h.lon!=null) assets.push({id:`harvest-${h.id}`,refId:h.id,type:"harvest",name:h.deer_name||`${h.sex||"Deer"} harvest`,lat:+h.lat,lon:+h.lon,harvest:h});
+  });
 
   assets.forEach(a=>{
     const marker=L.marker([a.lat,a.lon],{icon:areaMarkerIcon(a.type)});
-    if(a.type==="camera" && a.refId){
+    if(a.type==="harvest" && a.harvest){
+      const h=a.harvest; const photo=harvestPhotoUrlCache.get(h.id); const weather=h.weather_metadata||{};
+      const popup=`<div class="harvest-marker-popup"><strong>🦌 ${esc(h.deer_name||"Harvest")}</strong><br><small>${esc(String(h.sex||"deer"))} · ${h.harvested_at?new Date(h.harvested_at).toLocaleString():"Date not set"}${h.antler_points!=null?` · ${h.antler_points} pt`:""}${h.score!=null?` · ${h.score}"`:""}</small>${photo?`<br><img src="${photo}" alt="Harvest photo">`:""}${weather.harvest_temperature_f!=null?`<br><small>Weather: ${weather.harvest_temperature_f}°F · ${weather.wind_speed_mph??"—"} mph · ${weather.pressure_msl_hpa??"—"} hPa</small>`:"<br><small>Weather analysis pending</small>"}</div>`;
+      marker.bindPopup(popup,{maxWidth:320});
+    } else if(a.type==="camera" && a.refId){
       const photos=areaCameraPhotoCache.get(a.refId)||[];
       const thumbs=photos.length
         ? `<div class="camera-hover-grid">${photos.map(p=>`<img src="${p.url}" alt="Recent camera photo">`).join("")}</div>`
@@ -1823,7 +1840,8 @@ function renderAreaMap(){
   $("areaStandCount").textContent=areaStands.length;
   $("areaFeederCount").textContent=assets.filter(a=>a.type==="feeder").length;
   $("areaScrapeCount").textContent=assets.filter(a=>a.type==="scrape").length;
-  $("areaOtherCount").textContent=assets.filter(a=>!["camera","stand","feeder","scrape"].includes(a.type)).length;
+  if($("areaHarvestCount")) $("areaHarvestCount").textContent=areaHarvests.length;
+  $("areaOtherCount").textContent=assets.filter(a=>!["camera","stand","feeder","scrape","harvest"].includes(a.type)).length;
   $("areaAssetTitle").textContent=(property?.name||"Select a property")+(isOwner?"":" · Shared");
   $("areaAssetList").innerHTML=assets.length?assets.map(a=>`<span class="area-asset-chip">${assetMeta(a.type)[0]} ${esc(a.name||a.type)}</span>`).join(""):'<span class="muted">No mapped assets yet.</span>';
 
@@ -1840,7 +1858,6 @@ function renderAreaMap(){
   if ($("areaParcelLayer")?.checked) {
     setTimeout(loadTaxParcelsForCurrentView, 50);
   }
-  refreshAreaV15Details?.();
 }
 
 async function handleAreaMapClick(e){
@@ -1860,6 +1877,10 @@ async function handleAreaMapClick(e){
   }
   if(!areaSelectedAssetType)return;
   const type=areaSelectedAssetType;
+  if(type==="harvest"){
+    openHarvestModal(e.latlng.lat,e.latlng.lng);
+    return;
+  }
   let defaultName=type.charAt(0).toUpperCase()+type.slice(1);
   if(type==="camera"){ const unplaced=areaCameras.filter(c=>c.lat==null||c.lon==null); if(unplaced.length) defaultName=unplaced[0].name; }
   if(type==="stand"){ const unplaced=areaStands.filter(st=>st.lat==null||st.lon==null); if(unplaced.length) defaultName=unplaced[0].name; }
@@ -1894,6 +1915,72 @@ async function handleAreaMapClick(e){
   if(map) map.getContainer().style.cursor="grab";
   await loadAreaProperty();
   $("areaPlaceMessage").textContent=`${cleanName} placed and saved.`;
+}
+
+function openHarvestModal(lat,lon){
+  harvestPendingPoint={lat:+lat,lon:+lon,propertyId:$('areaPropertySelect')?.value||''};
+  const modal=$('harvestModal'); if(!modal)return;
+  $('harvestDate').value=new Date().toISOString().slice(0,10);
+  $('harvestTime').value=''; $('harvestName').value=''; $('harvestPoints').value=''; $('harvestScore').value=''; $('harvestAge').value=''; $('harvestNotes').value=''; $('harvestPhoto').value='';
+  $('harvestPhotoPreview').removeAttribute('src');
+  $('harvestLatLon').textContent=`${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  $('harvestMessage').textContent='';
+  modal.classList.remove('hidden'); modal.setAttribute('aria-hidden','false');
+}
+function closeHarvestModal(){
+  $('harvestModal')?.classList.add('hidden'); $('harvestModal')?.setAttribute('aria-hidden','true'); harvestPendingPoint=null;
+  areaSelectedAssetType=null; document.querySelectorAll('[data-asset-type]').forEach(b=>b.classList.remove('active')); if(map) map.getContainer().style.cursor='grab';
+}
+function previewHarvestPhoto(){
+  const f=$('harvestPhoto')?.files?.[0]; const img=$('harvestPhotoPreview'); if(!img)return;
+  if(!f){img.removeAttribute('src');return;} img.src=URL.createObjectURL(f);
+}
+function weatherNearestIndex(times, targetIso){
+  if(!Array.isArray(times)||!times.length)return -1; const target=new Date(targetIso).getTime(); let best=0,dist=Infinity;
+  times.forEach((t,i)=>{const d=Math.abs(new Date(t).getTime()-target);if(d<dist){best=i;dist=d;}}); return best;
+}
+async function analyzeHarvestWeather(harvestId,lat,lon,harvestedAt){
+  try{
+    const d=new Date(harvestedAt); const start=new Date(d); start.setDate(start.getDate()-2); const end=new Date(d); end.setDate(end.getDate()+1);
+    const fmt=x=>x.toISOString().slice(0,10);
+    const params=new URLSearchParams({latitude:String(lat),longitude:String(lon),start_date:fmt(start),end_date:fmt(end),timezone:'auto',temperature_unit:'fahrenheit',wind_speed_unit:'mph',precipitation_unit:'inch',hourly:'temperature_2m,relative_humidity_2m,precipitation,pressure_msl,cloud_cover,wind_speed_10m,wind_direction_10m'});
+    const res=await fetch(`https://archive-api.open-meteo.com/v1/archive?${params}`); if(!res.ok)throw new Error(`Historical weather ${res.status}`); const data=await res.json(); const h=data.hourly||{};
+    const i=weatherNearestIndex(h.time,harvestedAt); if(i<0)throw new Error('No historical weather returned');
+    const past=(hours)=>Math.max(0,i-hours);
+    const n=v=>Number.isFinite(Number(v))?Number(v):null;
+    const metadata={source:'Open-Meteo Historical Weather API',model_note:'Historical/reanalysis weather; not an on-site weather station reading.',timezone:data.timezone||null,harvest_temperature_f:n(h.temperature_2m?.[i]),relative_humidity_pct:n(h.relative_humidity_2m?.[i]),precipitation_in:n(h.precipitation?.[i]),pressure_msl_hpa:n(h.pressure_msl?.[i]),cloud_cover_pct:n(h.cloud_cover?.[i]),wind_speed_mph:n(h.wind_speed_10m?.[i]),wind_direction_deg:n(h.wind_direction_10m?.[i]),temp_change_24h_f:n(h.temperature_2m?.[i])!=null&&n(h.temperature_2m?.[past(24)])!=null?+(n(h.temperature_2m[i])-n(h.temperature_2m[past(24)])).toFixed(1):null,temp_change_48h_f:n(h.temperature_2m?.[i])!=null&&n(h.temperature_2m?.[past(48)])!=null?+(n(h.temperature_2m[i])-n(h.temperature_2m[past(48)])).toFixed(1):null,pressure_change_6h_hpa:n(h.pressure_msl?.[i])!=null&&n(h.pressure_msl?.[past(6)])!=null?+(n(h.pressure_msl[i])-n(h.pressure_msl[past(6)])).toFixed(1):null,pressure_change_12h_hpa:n(h.pressure_msl?.[i])!=null&&n(h.pressure_msl?.[past(12)])!=null?+(n(h.pressure_msl[i])-n(h.pressure_msl[past(12)])).toFixed(1):null};
+    await sb.from('harvest_events').update({weather_metadata:metadata,analysis_status:'ready',analysis_error:null}).eq('id',harvestId).eq('user_id',currentUser.id);
+    return metadata;
+  }catch(err){console.warn(err);await sb.from('harvest_events').update({analysis_status:'failed',analysis_error:String(err?.message||err)}).eq('id',harvestId).eq('user_id',currentUser.id);return null;}
+}
+async function saveHarvest(){
+  if(!harvestPendingPoint||!currentUser)return; const propertyId=harvestPendingPoint.propertyId; const date=$('harvestDate')?.value; if(!date){$('harvestMessage').textContent='Choose the harvest date.';return;}
+  const time=$('harvestTime')?.value||'12:00'; const harvestedAt=`${date}T${time}:00`; const btn=$('harvestSaveBtn'); btn.disabled=true; $('harvestMessage').textContent='Saving harvest…';
+  try{
+    let photoPath=null; const file=$('harvestPhoto')?.files?.[0];
+    if(file){const ext=(file.name.split('.').pop()||'jpg').toLowerCase();photoPath=`${currentUser.id}/${propertyId}/${crypto.randomUUID()}.${ext}`;const {error:upErr}=await sb.storage.from('harvest-photos').upload(photoPath,file,{upsert:false,contentType:file.type||'image/jpeg'});if(upErr)throw upErr;}
+    const row={user_id:currentUser.id,property_id:propertyId,lat:harvestPendingPoint.lat,lon:harvestPendingPoint.lon,harvested_at:harvestedAt,sex:$('harvestSex').value,deer_name:$('harvestName').value.trim()||null,antler_points:$('harvestPoints').value?Number($('harvestPoints').value):null,score:$('harvestScore').value?Number($('harvestScore').value):null,age_estimate:$('harvestAge').value?Number($('harvestAge').value):null,notes:$('harvestNotes').value.trim()||null,photo_path:photoPath,analysis_status:'pending'};
+    const {data:harvest,error}=await sb.from('harvest_events').insert(row).select('*').single(); if(error)throw error;
+    const {error:assetErr}=await sb.from('property_assets').insert({property_id:propertyId,owner_id:currentUser.id,asset_type:'harvest',name:row.deer_name||`${row.sex==='buck'?'Buck':'Deer'} Harvest`,lat:row.lat,lon:row.lon,metadata:{harvest_id:harvest.id}}); if(assetErr)throw assetErr;
+    $('harvestMessage').textContent='Saved. DIE is analyzing the historical weather now…';
+    await analyzeHarvestWeather(harvest.id,row.lat,row.lon,harvestedAt);
+    await loadAreaProperty(); closeHarvestModal(); $('areaPlaceMessage').textContent='Harvest saved. Its historical weather is now part of this farm’s intelligence.';
+  }catch(err){console.error(err);$('harvestMessage').textContent=err?.message||'Could not save harvest.';}finally{btn.disabled=false;}
+}
+function angleDiff(a,b){if(a==null||b==null)return 180;let d=Math.abs(a-b)%360;return d>180?360-d:d;}
+function harvestWeatherSimilarity(forecast,weather){
+  if(!forecast||!weather)return null; let score=0,weights=0; const add=(w,d,scale)=>{if(Number.isFinite(d)){score+=w*Math.max(0,1-d/scale);weights+=w;}};
+  add(3,Math.abs((forecast.temperature_f??0)-(weather.harvest_temperature_f??0)),25); add(2,Math.abs((forecast.wind_speed_mph??0)-(weather.wind_speed_mph??0)),20); add(2,angleDiff(forecast.wind_direction_deg,weather.wind_direction_deg),120); add(2,Math.abs((forecast.pressure_msl_hpa??0)-(weather.pressure_msl_hpa??0)),20); add(3,Math.abs((forecast.temp_change_24h_f??0)-(weather.temp_change_24h_f??0)),20); add(2,Math.abs((forecast.pressure_change_6h_hpa??0)-(weather.pressure_change_6h_hpa??0)),10); return weights?Math.round(score/weights*100):null;
+}
+async function getPlannerForecast(property,date,time){
+  const lat=Number(property?.lat),lon=Number(property?.lon); if(!Number.isFinite(lat)||!Number.isFinite(lon)||!date)return null;
+  try{const params=new URLSearchParams({latitude:String(lat),longitude:String(lon),start_date:date,end_date:date,timezone:'auto',temperature_unit:'fahrenheit',wind_speed_unit:'mph',precipitation_unit:'inch',hourly:'temperature_2m,precipitation,pressure_msl,wind_speed_10m,wind_direction_10m'}); const r=await fetch(`https://api.open-meteo.com/v1/forecast?${params}`); if(!r.ok)return null; const data=await r.json(); const h=data.hourly||{}; const targetHour=time==='evening'?17:time==='midday'?12:7; let i=(h.time||[]).findIndex(t=>new Date(t).getHours()===targetHour); if(i<0)i=0; const prior=Math.max(0,i-6); return {temperature_f:Number(h.temperature_2m?.[i]),wind_speed_mph:Number(h.wind_speed_10m?.[i]),wind_direction_deg:Number(h.wind_direction_10m?.[i]),pressure_msl_hpa:Number(h.pressure_msl?.[i]),precipitation_in:Number(h.precipitation?.[i]),pressure_change_6h_hpa:Number(h.pressure_msl?.[i])-Number(h.pressure_msl?.[prior]),temp_change_24h_f:null};}catch{return null;}
+}
+function regionalBuckScore(county){
+  const row=dieCountyHarvest2425.find(x=>String(x.county||'').toLowerCase()===String(county||'').replace(/ county/i,'').toLowerCase()); if(!row)return null; const vals=dieCountyHarvest2425.map(x=>Number(x.bucks_per_1000_hunter_days||0)).filter(Number.isFinite).sort((a,b)=>a-b); const v=Number(row.bucks_per_1000_hunter_days||0); const rank=vals.filter(x=>x<=v).length/Math.max(1,vals.length); return Math.round(40+rank*50);
+}
+async function personalizedFarmIntel(property,date,time){
+  const {data:rows}=await sb.from('harvest_events').select('*').eq('property_id',property.id).eq('user_id',currentUser.id).eq('sex','buck').eq('analysis_status','ready'); const harvests=rows||[]; const forecast=await getPlannerForecast(property,date,time); const sims=forecast?harvests.map(h=>harvestWeatherSimilarity(forecast,h.weather_metadata||{})).filter(x=>x!=null).sort((a,b)=>b-a):[]; const farm=sims.length?Math.round(sims.slice(0,Math.min(5,sims.length)).reduce((a,b)=>a+b,0)/Math.min(5,sims.length)):null; const regional=regionalBuckScore(property.county); const support=Math.min(1,harvests.length/10); const farmWeight=.25+.5*support; const regionalWeight=1-farmWeight; const combined=farm!=null&&regional!=null?Math.round(farm*farmWeight+regional*regionalWeight):(farm??regional); return {harvests:harvests.length,farm,regional,combined,forecast,farmWeight:Math.round(farmWeight*100),regionalWeight:Math.round(regionalWeight*100)};
 }
 
 async function toggleAreaBoundary(){
@@ -2392,7 +2479,6 @@ async function init() {
   setupTabs();
   initHarvestHistoryControls();
   renderOfficialHarvestRows();
-  wireAreaV15Ui();
 
   $("signInBtn")
     .addEventListener(
@@ -2474,6 +2560,11 @@ async function init() {
     );
 
   $("areaPropertySelect")?.addEventListener("change", loadAreaProperty);
+  $("harvestCloseBtn")?.addEventListener("click", closeHarvestModal);
+  $("harvestCancelBtn")?.addEventListener("click", closeHarvestModal);
+  $("harvestSaveBtn")?.addEventListener("click", saveHarvest);
+  $("harvestPhoto")?.addEventListener("change", previewHarvestPhoto);
+  $("harvestModal")?.addEventListener("click",e=>{if(e.target===$("harvestModal"))closeHarvestModal();});
   $("areaBoundaryBtn")?.addEventListener("click", toggleAreaBoundary);
   $("areaAddPropertyBtn")?.addEventListener("click", areaAddProperty);
   $("areaMyPropertiesBtn")?.addEventListener("click", () => document.querySelector('[data-tab="my-intel"]')?.click());
@@ -2752,141 +2843,6 @@ function renderHarvestHistory(){
   renderWeatherHistory(filtered);
 }
 
-
-
-/* ============================================================
-   AREA INTELLIGENCE V15 — MAP-FIRST UI
-   ============================================================ */
-function refreshAreaV15Details(){
-  const property=currentAreaProperty?.();
-  if(!property) return;
-
-  if($("areaV15Name")) $("areaV15Name").value=property.name||"";
-  if($("areaV15Acres")) $("areaV15Acres").value=property.acreage??property.acres??"";
-  if($("areaV15Location")) $("areaV15Location").value=[property.county,property.state||"AL"].filter(Boolean).join(", ");
-  if($("areaV15Notes")) $("areaV15Notes").value=property.notes||"";
-
-  const allAssets=[...(areaDbAssets||[])];
-  const feederCount=allAssets.filter(a=>a.type==="feeder").length;
-  const scrapeCount=allAssets.filter(a=>a.type==="scrape").length;
-  const otherCount=allAssets.filter(a=>!["feeder","scrape"].includes(a.type)).length;
-
-  if($("areaV15StatAcres")) $("areaV15StatAcres").textContent=property.acreage??property.acres??"—";
-  if($("areaV15StatCameras")) $("areaV15StatCameras").textContent=areaCameras?.length||0;
-  if($("areaV15StatStands")) $("areaV15StatStands").textContent=areaStands?.length||0;
-  if($("areaV15StatFeeders")) $("areaV15StatFeeders").textContent=feederCount;
-  if($("areaV15StatScrapes")) $("areaV15StatScrapes").textContent=scrapeCount;
-  if($("areaV15StatOther")) $("areaV15StatOther").textContent=otherCount;
-}
-
-async function saveAreaV15Property(){
-  const property=currentAreaProperty?.();
-  if(!property){
-    $("areaPlaceMessage").textContent="Create or choose a property first.";
-    return;
-  }
-  if(!properties.some(p=>p.id===property.id)){
-    $("areaPlaceMessage").textContent="Shared properties are view-only.";
-    return;
-  }
-
-  // If the user is actively drawing, the existing boundary function commits the polygon.
-  if(areaBoundaryMode){
-    await toggleAreaBoundary();
-  }
-
-  const name=$("areaV15Name")?.value?.trim()||property.name;
-  const acreage=$("areaV15Acres")?.value ? Number($("areaV15Acres").value) : null;
-  const location=$("areaV15Location")?.value?.trim()||"";
-  const county=location.split(",")[0]?.trim()||property.county||null;
-  const notes=$("areaV15Notes")?.value?.trim()||null;
-
-  const patch={name,county,state:"AL",acreage};
-  // Only add notes when the live schema supports it; retry without notes if necessary.
-  if(notes!==null) patch.notes=notes;
-
-  let {error}=await sb.from("properties").update(patch).eq("id",property.id).eq("user_id",currentUser.id);
-  if(error && Object.prototype.hasOwnProperty.call(patch,"notes")){
-    delete patch.notes;
-    ({error}=await sb.from("properties").update(patch).eq("id",property.id).eq("user_id",currentUser.id));
-  }
-
-  if(error){
-    $("areaPlaceMessage").textContent=error.message;
-    return;
-  }
-
-  Object.assign(property,patch);
-  $("areaPlaceMessage").textContent="Property saved. Boundary and map assets are already saved as you place them.";
-  refreshAreaV15Details();
-}
-
-function wireAreaV15Ui(){
-  $("areaSaveBtn")?.addEventListener("click",saveAreaV15Property);
-
-  $("areaCancelBtn")?.addEventListener("click",async()=>{
-    areaBoundaryMode=false;
-    areaBoundaryPoints=[];
-    areaSelectedAssetType=null;
-    await loadAreaProperty?.();
-    refreshAreaV15Details();
-  });
-
-  $("areaSelectParcelBtn")?.addEventListener("click",()=>{
-    if($("areaParcelLayer")) $("areaParcelLayer").checked=true;
-    toggleTaxParcelLayer?.(true);
-    $("areaPlaceMessage").textContent="Parcel borders are on. Use the parcel border as a guide, then Draw Polygon around the parcel to save it as your property.";
-  });
-
-  $("areaFreehandBtn")?.addEventListener("click",()=>{
-    $("areaPlaceMessage").textContent="Freehand boundary uses the same saved polygon workflow. Click points around the property, then Finish Boundary.";
-    if(!areaBoundaryMode) toggleAreaBoundary?.();
-  });
-
-  $("areaDeleteBtn")?.addEventListener("click",async()=>{
-    const property=currentAreaProperty?.();
-    if(!property || !properties.some(p=>p.id===property.id)) return;
-    if(!confirm("Delete the saved property boundary? Assets will remain.")) return;
-    const {error}=await sb.from("property_maps").delete().eq("property_id",property.id).eq("owner_id",currentUser.id);
-    if(error){$("areaPlaceMessage").textContent=error.message;return;}
-    areaBoundaryStored=[];
-    areaBoundaryGroup?.clearLayers();
-    $("areaPlaceMessage").textContent="Property boundary deleted.";
-  });
-
-  $("areaClearBtn")?.addEventListener("click",()=>{
-    areaSelectedAssetType=null;
-    areaBoundaryPoints=[];
-    if(areaBoundaryMode){
-      areaBoundaryGroup?.clearLayers();
-      $("areaPlaceMessage").textContent="Current unsaved boundary points cleared.";
-    }else{
-      $("areaPlaceMessage").textContent="Choose Draw Polygon to redraw the property, or choose an asset to place it.";
-    }
-  });
-
-  $("areaUndoBtn")?.addEventListener("click",()=>{
-    if(!areaBoundaryMode || !areaBoundaryPoints.length) return;
-    areaBoundaryPoints.pop();
-    areaBoundaryGroup?.clearLayers();
-    areaBoundaryPoints.forEach(pt=>L.circleMarker(pt,{radius:5,color:"#ff7900",fillColor:"#ff7900",fillOpacity:1,weight:2}).addTo(areaBoundaryGroup));
-    if(areaBoundaryPoints.length>1) L.polyline(areaBoundaryPoints,{color:"#ff7900",weight:3,dashArray:"7 7"}).addTo(areaBoundaryGroup);
-  });
-
-  $("areaRedoBtn")?.addEventListener("click",()=>{
-    $("areaPlaceMessage").textContent="Redo becomes available after DIE stores an edit-history stack.";
-  });
-
-  $("areaMoveBtn")?.addEventListener("click",()=>{
-    $("areaPlaceMessage").textContent="Boundary move/edit handles are planned; redraw the polygon to reposition it right now.";
-  });
-
-  $("areaEditBtn")?.addEventListener("click",()=>{
-    if(!areaBoundaryMode) toggleAreaBoundary?.();
-  });
-
-  $("areaPropertySelect")?.addEventListener("change",()=>setTimeout(refreshAreaV15Details,120));
-}
 
 /* DIE dashboard navigation helpers */
 document.addEventListener("click", (event) => {
@@ -3175,7 +3131,7 @@ async function updatePublicLandMap() {
   }
 }
 
-function buildHuntPlan() {
+async function buildHuntPlan() {
   const propertyId = plannerHuntType === "private" ? ($("plannerProperty")?.value || "") : "";
   const publicLandId = plannerHuntType === "public" ? ($("plannerPublicLand")?.value || "") : "";
   if (plannerHuntType === "private" && !propertyId) {
@@ -3220,4 +3176,15 @@ function buildHuntPlan() {
     : (deer
         ? `For ${date}, center the ${time} plan on ${label}. Review the selected public-land map below and use the lodging panel to organize the trip.`
         : `For ${date}, review access and terrain around ${locationName} for the ${time} hunt. Nearby hotels are shown below to help organize the trip.`);
+
+  if(plannerHuntType === "private" && property){
+    try{
+      const intel=await personalizedFarmIntel(property,date,time);
+      if(intel.combined!=null){
+        const farmText=intel.farm!=null?`Farm-weather match ${intel.farm}/100 from ${intel.harvests} analyzed buck harvest${intel.harvests===1?'':'s'}`:`Farm history still building (${intel.harvests} analyzed buck harvests)`;
+        const regionalText=intel.regional!=null?`${String(property.county||'County').replace(/ County$/i,'')} regional baseline ${intel.regional}/100`:'Regional baseline unavailable';
+        $("plannerCallout").innerHTML=`<strong>DIE Personalized Hunt Index: ${intel.combined}/100</strong><div class="intel-score-row"><span>${farmText}</span><span>${regionalText}</span><span>Current weighting: ${intel.farmWeight}% farm / ${intel.regionalWeight}% regional</span></div><div class="small muted" style="margin-top:8px">Experimental decision support: combines your farm harvest/weather history with official 2024-25 county harvest-effort intelligence. More confirmed farm harvests gradually increase farm-specific weighting.</div>`;
+      }
+    }catch(err){console.warn('Personalized farm intelligence unavailable',err);}
+  }
 }
