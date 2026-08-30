@@ -41,6 +41,15 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 .camera-popup-actions{display:grid;gap:7px;margin-top:10px}
 .camera-upload-btn{width:100%;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,121,0,.55);background:rgba(255,121,0,.12);color:#ff7900;font-weight:800;cursor:pointer}
 
+
+.asset-marker-popup{min-width:210px}.asset-marker-popup small{color:#a8adb4}
+.asset-popup-actions{display:grid;gap:7px;margin-top:10px}
+.asset-edit-btn,.asset-delete-btn{width:100%;padding:9px 10px;border-radius:8px;font-weight:800;cursor:pointer}
+.asset-edit-btn{border:1px solid rgba(255,121,0,.55);background:rgba(255,121,0,.12);color:#ff7900}
+.asset-delete-btn,.danger-action{border:1px solid rgba(220,70,70,.55)!important;background:rgba(220,70,70,.08)!important;color:#ff7777!important}
+.area-asset-chip.asset-clickable{cursor:pointer;border:1px solid rgba(255,255,255,.09);padding:6px 9px;border-radius:8px}
+.area-asset-chip.asset-clickable:hover{border-color:rgba(255,121,0,.5);color:#ff7900}
+
 </style>
   <link rel="stylesheet" href="die-dashboard-v7.css?v=20260829-001">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -644,7 +653,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 
       <div class="area-property-toolbar">
         <label class="area-property-select"><span>SELECT PROPERTY</span><select id="areaPropertySelect"><option value="">Choose property…</option></select></label>
-        <button id="areaBoundaryBtn" class="secondary" type="button">◇ Draw Property Boundary</button>
+        <button id="areaBoundaryBtn" class="secondary" type="button">◇ Draw Property Boundary</button><button id="areaDeletePropertyBtn" class="secondary danger-action" type="button">Delete Property</button>
         <div class="area-count"><span>📷 Cameras</span><strong id="areaCameraCount">0</strong></div>
         <div class="area-count"><span>♜ Stands</span><strong id="areaStandCount">0</strong></div>
         <div class="area-count"><span>▾ Feeders</span><strong id="areaFeederCount">0</strong></div>
@@ -704,6 +713,39 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 
 
 
+
+<div id="assetMetaModal" class="harvest-modal hidden" aria-hidden="true">
+  <article class="harvest-card">
+    <div class="harvest-card-head">
+      <div><div class="eyebrow">PROPERTY INTELLIGENCE</div><h2 id="assetMetaTitle">Asset Details</h2><p class="muted">Edit the information DIE stores for this exact map location.</p></div>
+      <button id="assetMetaCloseBtn" class="secondary harvest-close" type="button">×</button>
+    </div>
+    <input id="assetMetaKind" type="hidden"><input id="assetMetaId" type="hidden">
+    <div class="harvest-form-grid">
+      <label>Asset name<input id="assetMetaName" placeholder="North Ridge Stand"></label>
+      <label>Type<input id="assetMetaType" disabled></label>
+      <label id="assetFacingWrap">Facing<select id="assetMetaFacing"><option>N</option><option>NE</option><option>E</option><option>SE</option><option>S</option><option>SW</option><option>W</option><option>NW</option></select></label>
+      <label id="assetHabitatWrap">Habitat / terrain<input id="assetMetaHabitat" placeholder="Field edge, hardwood ridge, creek bottom…"></label>
+      <label>Established / placed date<input id="assetMetaDate" type="date"></label>
+      <label>Condition / status<input id="assetMetaStatus" placeholder="Active, moved, fresh scrape, full feeder…"></label>
+    </div>
+    <label>Intelligence notes<textarea id="assetMetaNotes" rows="4" placeholder="Anything useful about this location, access, deer movement, wind, food source, bedding, etc."></textarea></label>
+    <div id="assetCameraUploadArea" class="hidden">
+      <div class="intel-card compact-card" style="margin-top:14px">
+        <div class="eyebrow">CAMERA PHOTOS</div>
+        <p class="muted">Photos uploaded here are saved to this exact camera and property.</p>
+        <button id="assetUploadPhotosBtn" class="primary" type="button">＋ Upload Deer Photos to This Camera</button>
+      </div>
+    </div>
+    <div id="assetMetaMessage" class="small muted"></div>
+    <div class="harvest-actions">
+      <button id="assetDeleteBtn" class="secondary" type="button">Delete</button>
+      <button id="assetMetaCancelBtn" class="secondary" type="button">Cancel</button>
+      <button id="assetMetaSaveBtn" class="primary" type="button">Save Metadata</button>
+    </div>
+  </article>
+</div>
+
 <div id="harvestModal" class="harvest-modal hidden" aria-hidden="true">
   <article class="harvest-card">
     <div class="harvest-card-head"><div><div class="eyebrow">FARM INTELLIGENCE</div><h2>Log a Deer Harvest</h2><p class="muted">DIE will attach the exact map location and analyze historical weather around the harvest.</p></div><button id="harvestCloseBtn" class="secondary harvest-close" type="button">×</button></div>
@@ -741,7 +783,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 <script src="supabase-config.js"></script>
 
 <div id="usernameGate" class="auth-gate hidden" style="z-index:9999"><article class="auth-card"><div class="eyebrow">Finish Your DIE Profile</div><h2>Create your username</h2><p>Your username is how friends find you. Your email stays private.</p><label>Username<input id="onboardingUsername" autocomplete="username" placeholder="austinhose"></label><label>Display name<input id="onboardingDisplayName" placeholder="Austin"></label><button id="saveUsernameBtn" class="primary" type="button">Continue to DIE</button><div id="usernameMessage" class="small muted"></div></article></div>
-<script src="die-dashboard-v17.js?v=17"></script>
+<script src="die-dashboard-v18.js?v=18"></script>
 
 </body>
 </html>
