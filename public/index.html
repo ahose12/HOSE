@@ -64,11 +64,15 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 
 
 /* DINR v21 */
-.sidebar-brand::after{content:"DINR";display:block;color:#ff7900;font-weight:950;font-size:25px;letter-spacing:.08em;line-height:1;margin-top:8px}
+.sidebar-brand::after{content:"";display:none}
 .sidebar-brand-sub{font-size:10px!important;letter-spacing:.07em!important}
 </style>
   <link rel="stylesheet" href="die-dashboard-v7.css?v=20260829-001">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+<style>
+.account-friends-form{display:grid;gap:10px}.account-friends-form label{display:grid;gap:6px;font-size:12px;color:var(--muted,#9aa0a6)}.account-friends-form input{width:100%;box-sizing:border-box;background:#101214;border:1px solid #30343a;color:#fff;border-radius:8px;padding:10px 11px}.account-friends-form input[readonly]{opacity:.7}.account-friends-form .primary{width:100%}
+</style>
 </head>
 
 <body>
@@ -76,7 +80,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 <div class="shell">
 
   <header class="hero">
-    <div class="brand-lockup"><img src="die-logo.png" alt="DIE logo" class="brand-logo"><div><div class="eyebrow">Deer Intelligence & Natural Reconnaissance</div><h1>DINR</h1></div></div>
+    <div class="brand-lockup"><img src="dinr-logo.svg" alt="DINR logo" class="brand-logo"><div><div class="eyebrow">Deer Intelligence & Natural Reconnaissance</div><h1>DINR</h1></div></div>
     <p class="hero-tagline">Search the area. Learn your deer. Hunt smarter.</p>
     <p>
       Private trail-camera intelligence, deer history, hunting conditions,
@@ -97,7 +101,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
       </div>
 
       <h2>
-        Sign in to DIE
+        Sign in to DINR
       </h2>
 
       <p>
@@ -166,21 +170,18 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 
     <aside class="app-sidebar">
       <div class="sidebar-brand">
-        <img src="die-logo.png" alt="DIE logo">
+        <img src="dinr-logo.svg" alt="DINR logo">
         <div class="sidebar-brand-name">DINR</div>
         <div class="sidebar-brand-sub">Deer Intelligence & Natural Reconnaissance</div>
       </div>
 
-      <nav class="sidebar-nav" aria-label="DIE navigation">
+      <nav class="sidebar-nav" aria-label="DINR navigation">
         <button class="app-tab active" data-tab="my-intel" type="button"><span>⌖</span> My Deer Intelligence</button>
         <button class="app-tab" data-tab="area-intel" type="button"><span>⌖</span> Area Intelligence</button>
         <button class="app-tab" data-tab="planner" type="button"><span>◎</span> Plan a Hunt</button>
         <button class="app-tab" data-tab="history" type="button"><span>◷</span> History</button>
         <div class="side-divider"></div>
-        <button class="side-action" data-action="activity" type="button"><span>⌁</span> Activity</button>
         <button class="app-tab" data-tab="friends" type="button"><span>♙</span> Friends</button>
-        <button class="app-tab" data-tab="friends" data-scroll="account" type="button"><span>♙</span> Account</button>
-        <button class="app-tab" data-tab="friends" data-scroll="account" type="button"><span>⚙</span> Settings</button>
       </nav>
 
       <div class="legacy-session-fields" aria-hidden="true"><span id="signedInEmail"></span><span id="signedInUsername"></span></div>
@@ -197,7 +198,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 
     <div class="app-main">
       <div class="mobile-appbar">
-        <img src="die-logo.png" alt="DIE">
+        <img src="dinr-logo.svg" alt="DINR">
         <strong>DINR</strong>
         <button class="mobile-menu-button" type="button" aria-label="Menu">☰</button>
       </div>
@@ -252,13 +253,24 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
           <div class="social-card-head"><div><div class="eyebrow">SHARED INTELLIGENCE</div><h3>Shared With Me</h3></div></div>
           <div id="sharedPropertiesList" class="social-list"><div class="small muted">No properties shared with you.</div></div>
         </section>
+
+        <section id="accountSettingsCard" class="social-card">
+          <div class="social-card-head"><div><div class="eyebrow">YOUR DINR PROFILE</div><h3>Account</h3></div></div>
+          <div class="account-friends-form">
+            <label>Username<input id="settingsUsername" autocomplete="username" placeholder="huntername"></label>
+            <label>Display name<input id="settingsDisplayName" placeholder="Display name"></label>
+            <label>Email<input id="settingsEmail" type="email" readonly></label>
+            <button id="saveProfileBtn" class="primary" type="button">Save Profile</button>
+            <div id="profileMessage" class="small muted"></div>
+          </div>
+        </section>
       </aside>
     </div>
   </div>
 
   <div id="findHuntersModal" class="modal-backdrop hidden" aria-hidden="true">
     <div class="modal-card social-find-card">
-      <div class="modal-head"><div><div class="eyebrow">FIND HUNTERS</div><h2>Grow Your Hunting Circle</h2><p class="muted">Search by DIE username. Email addresses stay private.</p></div><button id="findHuntersCloseBtn" class="icon-button" type="button">✕</button></div>
+      <div class="modal-head"><div><div class="eyebrow">FIND HUNTERS</div><h2>Grow Your Hunting Circle</h2><p class="muted">Search by DINR username. Email addresses stay private.</p></div><button id="findHuntersCloseBtn" class="icon-button" type="button">✕</button></div>
       <div class="social-search-row"><input id="friendSearchInput" placeholder="@username"><button id="friendSearchBtn" class="primary" type="button">Search</button></div>
       <div id="friendSearchResults" class="social-search-results"><div class="small muted">Search for a hunter to connect.</div></div>
     </div>
@@ -309,7 +321,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
               <div id="profileEmptyState" class="profile-empty-state">
                 <div class="empty-icon">🦌</div>
                 <strong>No deer profiles yet</strong>
-                <span>Add a camera to a property, then upload photos directly to that camera. DIE will build profiles as deer are analyzed.</span>
+                <span>Add a camera to a property, then upload photos directly to that camera. DINR will build profiles as deer are analyzed.</span>
               </div>
               <img id="profileHeroImage" class="hidden" alt="Selected deer profile">
               <div id="profileCounter" class="profile-counter hidden"></div>
@@ -457,7 +469,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
           <article class="intel-card compact-note">
             <div class="eyebrow">AI Processing</div>
             <h3>Deer Analysis</h3>
-            <p>DIE analyzes uploaded photos for deer presence, buck/doe/fawn counts, individual buck matches, antler traits, timestamps and hunting context.</p>
+            <p>DINR analyzes uploaded photos for deer presence, buck/doe/fawn counts, individual buck matches, antler traits, timestamps and hunting context.</p>
           </article>
           </div>
         </details>
@@ -575,9 +587,9 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
         </article>
 
         <article class="intel-card planner-output">
-          <div class="eyebrow">DIE Recommendation</div>
+          <div class="eyebrow">DINR Recommendation</div>
           <h3 id="plannerTitle">Choose a private property to start</h3>
-          <p id="plannerSummary" class="muted">DIE will use your property layout, deer profiles and sightings to organize the hunt.</p>
+          <p id="plannerSummary" class="muted">DINR will use your property layout, deer profiles and sightings to organize the hunt.</p>
           <div class="planner-metrics">
             <div><span>Target</span><strong id="plannerTarget">—</strong></div>
             <div><span>Sightings</span><strong id="plannerSightings">—</strong></div>
@@ -646,7 +658,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
         </div>
 
         <div id="historyDataStatus" class="planner-callout">
-          Official 2024-25 Alabama county harvest estimates are loaded for all 67 counties. DIE also looks for date-level Game Check records; weather prediction remains disabled until those public daily records can be retrieved.
+          Official 2024-25 Alabama county harvest estimates are loaded for all 67 counties. DINR also looks for date-level Game Check records; weather prediction remains disabled until those public daily records can be retrieved.
         </div>
 
         <div class="history-metrics">
@@ -685,12 +697,12 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
           </div>
           <div class="history-source">
             <span>↗</span>
-            <div><strong>Outdoor Alabama / ADCNR Game Check</strong><p>Every number shown here is from an official ADCNR/Outdoor Alabama publication. DIE does not estimate missing daily counts.</p></div>
+            <div><strong>Outdoor Alabama / ADCNR Game Check</strong><p>Every number shown here is from an official ADCNR/Outdoor Alabama publication. DINR does not estimate missing daily counts.</p></div>
           </div>
         </article>
 
         <article class="intel-card">
-          <div class="eyebrow">How DIE Will Use It</div>
+          <div class="eyebrow">How DINR Will Use It</div>
           <h3>Historical Hunt Index</h3>
           <div class="history-list">
             <div class="history-row"><span>1</span><span>Reported harvest by county + date</span><strong>Game Check</strong></div>
@@ -765,7 +777,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
         <div id="areaAssetList" class="area-asset-list"><span class="muted">Your cameras, stands, feeders, scrapes, harvests and other map points will appear here.</span></div>
       </div>
 
-      <!-- Legacy hidden elements retained for compatibility with older DIE JS -->
+      <!-- Legacy hidden elements retained for compatibility with older DINR JS -->
       <div class="hidden" aria-hidden="true">
         <input id="address"><select id="radius"></select><input id="minAcres"><select id="publicLand"><option value=""></option></select>
         <button id="searchBtn" type="button"></button><b id="mObs">0</b><b id="mDeer">0</b><b id="mProfiles">0</b><b id="mHarvested">0</b><div id="status"></div><div id="results"></div>
@@ -784,7 +796,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 <div id="assetMetaModal" class="harvest-modal hidden" aria-hidden="true">
   <article class="harvest-card">
     <div class="harvest-card-head">
-      <div><div class="eyebrow">PROPERTY INTELLIGENCE</div><h2 id="assetMetaTitle">Asset Details</h2><p class="muted">Edit the information DIE stores for this exact map location.</p></div>
+      <div><div class="eyebrow">PROPERTY INTELLIGENCE</div><h2 id="assetMetaTitle">Asset Details</h2><p class="muted">Edit the information DINR stores for this exact map location.</p></div>
       <button id="assetMetaCloseBtn" class="secondary harvest-close" type="button">×</button>
     </div>
     <input id="assetMetaKind" type="hidden"><input id="assetMetaId" type="hidden">
@@ -815,7 +827,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 
 <div id="harvestModal" class="harvest-modal hidden" aria-hidden="true">
   <article class="harvest-card">
-    <div class="harvest-card-head"><div><div class="eyebrow">FARM INTELLIGENCE</div><h2>Log a Deer Harvest</h2><p class="muted">DIE will attach the exact map location and analyze historical weather around the harvest.</p></div><button id="harvestCloseBtn" class="secondary harvest-close" type="button">×</button></div>
+    <div class="harvest-card-head"><div><div class="eyebrow">FARM INTELLIGENCE</div><h2>Log a Deer Harvest</h2><p class="muted">DINR will attach the exact map location and analyze historical weather around the harvest.</p></div><button id="harvestCloseBtn" class="secondary harvest-close" type="button">×</button></div>
     <div class="harvest-form-grid">
       <label>Harvest date<input id="harvestDate" type="date"></label>
       <label>Approx. time<input id="harvestTime" type="time"></label>
@@ -832,7 +844,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
       <div class="full harvest-preview"><img id="harvestPhotoPreview" alt="Harvest preview"><div><strong id="harvestLocationLabel">Map location selected</strong><div class="small muted" id="harvestLatLon"></div></div></div>
       <label class="full">Notes<textarea id="harvestNotes" rows="3" placeholder="Entry route, stand used, chasing, rut behavior, shot distance, etc."></textarea></label>
     </div>
-    <div class="harvest-intel-note"><strong>Automatic intelligence</strong><div class="small muted">After save, DIE retrieves historical temperature, pressure, wind, precipitation, humidity and cloud cover for this exact location/date, calculates weather changes before the harvest, and stores those signals for farm-specific hunt predictions.</div></div>
+    <div class="harvest-intel-note"><strong>Automatic intelligence</strong><div class="small muted">After save, DINR retrieves historical temperature, pressure, wind, precipitation, humidity and cloud cover for this exact location/date, calculates weather changes before the harvest, and stores those signals for farm-specific hunt predictions.</div></div>
     <input id="harvestEditId" type="hidden">
     <div id="harvestMessage" class="small muted"></div>
     <div class="harvest-actions"><button id="harvestCancelBtn" class="secondary" type="button">Cancel</button><button id="harvestDeleteBtn" class="secondary hidden" type="button">Delete Harvest</button><button id="harvestSaveBtn" class="primary" type="button">Save Harvest + Analyze</button></div>
@@ -849,7 +861,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 
 <script src="supabase-config.js"></script>
 
-<div id="usernameGate" class="auth-gate hidden" style="z-index:9999"><article class="auth-card"><div class="eyebrow">Finish Your DIE Profile</div><h2>Create your username</h2><p>Your username is how friends find you. Your email stays private.</p><label>Username<input id="onboardingUsername" autocomplete="username" placeholder="austinhose"></label><label>Display name<input id="onboardingDisplayName" placeholder="Austin"></label><button id="saveUsernameBtn" class="primary" type="button">Continue to DIE</button><div id="usernameMessage" class="small muted"></div></article></div>
+<div id="usernameGate" class="auth-gate hidden" style="z-index:9999"><article class="auth-card"><div class="eyebrow">Finish Your DINR Profile</div><h2>Create your username</h2><p>Your username is how friends find you. Your email stays private.</p><label>Username<input id="onboardingUsername" autocomplete="username" placeholder="austinhose"></label><label>Display name<input id="onboardingDisplayName" placeholder="Austin"></label><button id="saveUsernameBtn" class="primary" type="button">Continue to DINR</button><div id="usernameMessage" class="small muted"></div></article></div>
 <script src="dinr-dashboard-v21.js?v=21"></script>
 
 </body>

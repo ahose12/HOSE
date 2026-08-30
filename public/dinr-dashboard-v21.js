@@ -1269,10 +1269,53 @@ function profileDisplayName(deer) {
 }
 
 function getProfileScore(deer) {
-  const t = deer?.ai_traits || {};
-  const raw = t.hose_score ?? t.estimated_score ?? t.gross_score ?? t.score_estimate ?? t.boone_crockett_score ?? deer?.estimated_score ?? null;
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : null;
+  // One canonical path for every DINR score shown in the UI.
+  // Zero is treated as "missing", never as a legitimate buck score.
+  return normalizeBuckScore(deer) ?? deriveFallbackBuckScore(deer);
+}
+
+function deriveFallbackBuckScore(profile) {
+  // Every indexed buck gets a numeric estimated gross-typical score immediately.
+  // Prefer measurable antler/profile traits; use a conservative baseline only when
+  // the profile has not yet produced enough antler detail. The photo rescore can
+  // replace this display estimate as soon as a stronger AI estimate is available.
+  const t = profile?.ai_traits || {};
+  const toNum = (v) => {
+    if (v == null || v === "") return null;
+    if (typeof v === "number") return Number.isFinite(v) && v > 0 ? v : null;
+    const m = String(v).match(/(\d+(?:\.\d+)?)/);
+    if (!m) return null;
+    const n = Number(m[1]);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+
+  const spread = toNum(t.inside_spread ?? t.spread ?? t.antler_spread);
+  const beam = toNum(t.main_beam_length ?? t.main_beam ?? t.beam_length);
+  const mass = toNum(t.mass_total ?? t.mass ?? t.circumference_total);
+  const tine = toNum(t.tine_length_total ?? t.total_tine_length ?? t.tine_total);
+  const points = toNum(profile?.antler_points ?? t.antler_points ?? t.points ?? t.point_count);
+
+  // If component measurements exist, approximate gross typical directly.
+  if (spread || beam || mass || tine) {
+    const score = (spread || 15) + ((beam || 20) * 2) + (mass || 28) + (tine || ((points || 8) * 4));
+    return Math.round(Math.max(60, Math.min(220, score)) * 10) / 10;
+  }
+
+  // Point-count fallback keeps an indexed buck from ever displaying 0.0/blank.
+  if (points) {
+    const score = 62 + Math.min(points, 16) * 5.5;
+    return Math.round(Math.max(70, Math.min(170, score)) * 10) / 10;
+  }
+
+  // Age can improve the conservative fallback when it is already known.
+  const age = toNum(profile?.estimated_age_class ?? t.estimated_age ?? t.age);
+  if (age) {
+    const score = age < 2 ? 80 : age < 3 ? 95 : age < 4 ? 112 : age < 5 ? 125 : 135;
+    return Number(score.toFixed(1));
+  }
+
+  // Last-resort low-confidence estimate for an indexed buck with no antler metadata yet.
+  return 100.0;
 }
 
 function getProfileScoreRange(deer) {
@@ -1421,7 +1464,7 @@ function profileCompareCard(deer) {
   const score = getProfileScore(deer);
   return `<div class="compare-card">
     <strong>${esc(profileDisplayName(deer))}</strong>
-    <div><span>DIE score</span><b>${score === null ? "—" : `~${score.toFixed(1)}"`}</b></div>
+    <div><span>DINR score</span><b>${score === null ? "—" : `~${score.toFixed(1)}"`}</b></div>
     <div><span>Estimated age</span><b>${esc(deer.estimated_age_class || "—")}</b></div>
     <div><span>Sightings</span><b>${Number(deer.sighting_count||0)}</b></div>
     <div><span>Confidence</span><b>${percentValue(deer.identity_confidence)}</b></div>
@@ -1455,8 +1498,9 @@ function normalizeBuckScore(profile){
   return null;
 }
 function buckScoreDisplay(profile){
-  const score=normalizeBuckScore(profile);
-  return score!=null?{value:`~${Number(score).toFixed(1)}"`,missing:false}:{value:"Scoring…",missing:true};
+  const canonical=normalizeBuckScore(profile);
+  const score=canonical ?? deriveFallbackBuckScore(profile);
+  return {value:`~${Number(score).toFixed(1)}"`,missing:canonical==null};
 }
 
 const dinrScoreRepairInFlight=new Set();
@@ -1478,6 +1522,11 @@ async function requestMissingBuckScore(profile){
       body:JSON.stringify({photo_id:photoId,force_rescore:true,deer_profile_id:profile.id})
     });
     if(!response.ok)console.warn("DINR score repair",await response.text());
+    else {
+      await loadDeerProfiles();
+      renderPrivate();
+      await renderProfileShowcase();
+    }
   }catch(err){console.warn("DINR score repair",err);}
   finally{dinrScoreRepairInFlight.delete(profile.id);}
 }
@@ -2411,7 +2460,7 @@ async function toggleAreaBoundary(){
     areaBoundaryPoints=[];
     map.getContainer().style.cursor='grab';
     renderAreaMap();
-    $("areaPlaceMessage").textContent="Property boundary saved to your DIE account.";
+    $("areaPlaceMessage").textContent="Property boundary saved to your DINR account.";
   }
 }
 
@@ -3285,17 +3334,6 @@ document.addEventListener("click", (event) => {
     document.getElementById("editCurrentProfileBtn")?.click();
   }
 
-  const tabWithScroll = event.target.closest(".app-tab[data-scroll]");
-  if (tabWithScroll) {
-    setTimeout(() => document.getElementById("accountSettingsCard")?.scrollIntoView({behavior:"smooth",block:"center"}), 40);
-  }
-
-  const sideAction = event.target.closest(".side-action");
-  if (sideAction?.dataset.action === "activity") {
-    document.querySelector('.app-tab[data-tab="my-intel"]')?.click();
-    const drawer = document.getElementById("workspaceDrawer");
-    if (drawer) { drawer.open = true; setTimeout(() => drawer.scrollIntoView({behavior:"smooth",block:"start"}),30); }
-  }
 });
 
 
