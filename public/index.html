@@ -30,7 +30,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 @media(max-width:900px){.history-filterbar,.history-metrics{grid-template-columns:1fr 1fr}.history-grid{grid-template-columns:1fr}}
 @media(max-width:560px){.history-filterbar,.history-metrics{grid-template-columns:1fr}}
 
-.harvest-modal{position:fixed;inset:0;z-index:10050;background:rgba(0,0,0,.76);display:flex;align-items:center;justify-content:center;padding:20px}.harvest-modal.hidden{display:none!important}.harvest-card{width:min(680px,100%);max-height:92vh;overflow:auto;background:#0b0e0c;border:1px solid rgba(255,121,0,.28);border-radius:18px;padding:22px;box-shadow:0 24px 80px rgba(0,0,0,.55)}.harvest-card-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}.harvest-card-head h2{margin:.2rem 0}.harvest-close{width:38px;height:38px;border-radius:10px}.harvest-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-top:16px}.harvest-form-grid .full{grid-column:1/-1}.harvest-form-grid label{margin:0}.harvest-preview{display:flex;gap:14px;align-items:center;padding:12px;border:1px dashed rgba(255,255,255,.12);border-radius:12px}.harvest-preview img{width:82px;height:82px;border-radius:10px;object-fit:cover;background:#151a17}.harvest-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}.harvest-intel-note{margin-top:12px;padding:12px 14px;border:1px solid rgba(255,121,0,.18);background:rgba(255,121,0,.05);border-radius:12px}.harvest-marker-popup img{width:180px;max-height:150px;object-fit:cover;border-radius:8px;margin-top:8px}.intel-score-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}.intel-score-row span{padding:8px;border:1px solid rgba(255,255,255,.08);border-radius:9px;font-size:12px;text-align:center}@media(max-width:600px){.harvest-form-grid{grid-template-columns:1fr}.harvest-form-grid .full{grid-column:auto}.intel-score-row{grid-template-columns:1fr}}
+.harvest-modal{position:fixed;inset:0;z-index:10050;background:rgba(0,0,0,.76);display:flex;align-items:center;justify-content:center;padding:20px}.harvest-modal.hidden{display:none!important}.harvest-card{width:min(680px,100%);max-height:92vh;overflow:auto;background:#0b0e0c;border:1px solid rgba(255,121,0,.28);border-radius:18px;padding:22px;box-shadow:0 24px 80px rgba(0,0,0,.55)}.harvest-card-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}.harvest-card-head h2{margin:.2rem 0}.harvest-close{width:38px;height:38px;border-radius:10px}.harvest-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-top:16px}.harvest-form-grid .full{grid-column:1/-1}.harvest-form-grid label{margin:0}.harvest-preview{display:flex;gap:14px;align-items:center;padding:12px;border:1px dashed rgba(255,255,255,.12);border-radius:12px}.harvest-preview img{width:82px;height:82px;border-radius:10px;object-fit:cover;background:#151a17}.harvest-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}.harvest-intel-note{margin-top:12px;padding:12px 14px;border:1px solid rgba(255,121,0,.18);background:rgba(255,121,0,.05);border-radius:12px}.harvest-marker-popup img{width:180px;max-height:150px;object-fit:cover;border-radius:8px;margin-top:8px}.harvest-edit-btn{margin-top:9px;width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,121,0,.5);background:rgba(255,121,0,.10);color:#ff7900;font-weight:700;cursor:pointer}.intel-score-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}.intel-score-row span{padding:8px;border:1px solid rgba(255,255,255,.08);border-radius:9px;font-size:12px;text-align:center}@media(max-width:600px){.harvest-form-grid{grid-template-columns:1fr}.harvest-form-grid .full{grid-column:auto}.intel-score-row{grid-template-columns:1fr}}
 
 
 </style>
@@ -706,14 +706,19 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
       <label>Antler points<input id="harvestPoints" type="number" min="0" max="40" placeholder="10"></label>
       <label>Measured / estimated score<input id="harvestScore" type="number" min="0" step="0.125" placeholder="148.375"></label>
       <label>Age estimate<input id="harvestAge" type="number" min="0" max="15" step="0.5" placeholder="4.5"></label>
+      <label>Deer came from<select id="harvestApproachDirection">
+        <option value="">Unknown / not recorded</option><option>N</option><option>NE</option><option>E</option><option>SE</option><option>S</option><option>SW</option><option>W</option><option>NW</option>
+      </select></label>
+      <label>Direction detail<input id="harvestApproachNotes" placeholder="Creek bottom, bedding area, north field…"></label>
       <label class="full">Deer / nickname<input id="harvestName" placeholder="Big 9, 2024 buck, etc."></label>
       <label class="full">Harvest photo<input id="harvestPhoto" type="file" accept="image/*"></label>
       <div class="full harvest-preview"><img id="harvestPhotoPreview" alt="Harvest preview"><div><strong id="harvestLocationLabel">Map location selected</strong><div class="small muted" id="harvestLatLon"></div></div></div>
       <label class="full">Notes<textarea id="harvestNotes" rows="3" placeholder="Entry route, stand used, chasing, rut behavior, shot distance, etc."></textarea></label>
     </div>
     <div class="harvest-intel-note"><strong>Automatic intelligence</strong><div class="small muted">After save, DIE retrieves historical temperature, pressure, wind, precipitation, humidity and cloud cover for this exact location/date, calculates weather changes before the harvest, and stores those signals for farm-specific hunt predictions.</div></div>
+    <input id="harvestEditId" type="hidden">
     <div id="harvestMessage" class="small muted"></div>
-    <div class="harvest-actions"><button id="harvestCancelBtn" class="secondary" type="button">Cancel</button><button id="harvestSaveBtn" class="primary" type="button">Save Harvest + Analyze</button></div>
+    <div class="harvest-actions"><button id="harvestCancelBtn" class="secondary" type="button">Cancel</button><button id="harvestDeleteBtn" class="secondary hidden" type="button">Delete Harvest</button><button id="harvestSaveBtn" class="primary" type="button">Save Harvest + Analyze</button></div>
   </article>
 </div>
 
@@ -728,7 +733,7 @@ body.is-authenticated .shell{max-width:none!important;margin:0!important;padding
 <script src="supabase-config.js"></script>
 
 <div id="usernameGate" class="auth-gate hidden" style="z-index:9999"><article class="auth-card"><div class="eyebrow">Finish Your DIE Profile</div><h2>Create your username</h2><p>Your username is how friends find you. Your email stays private.</p><label>Username<input id="onboardingUsername" autocomplete="username" placeholder="austinhose"></label><label>Display name<input id="onboardingDisplayName" placeholder="Austin"></label><button id="saveUsernameBtn" class="primary" type="button">Continue to DIE</button><div id="usernameMessage" class="small muted"></div></article></div>
-<script src="die-dashboard-v15.js?v=15"></script>
+<script src="die-dashboard-v16.js?v=16"></script>
 
 </body>
 </html>
